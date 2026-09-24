@@ -1,0 +1,10 @@
+.idea/
+.vscode/
+data/
+log/
+bin/
+.env
+*.local.*
+*.pid
+coverage.out
+.DS_Store

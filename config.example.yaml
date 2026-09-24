@@ -1,0 +1,73 @@
+# system configuration
+system:
+  env: 'public'
+  addr: '0.0.0.0:8888' # 监听地址
+  db-type: 'none' # 默认无数据库，EPG 存本地文件；可设为 mysql 并配置下方 mysql
+  oss-type: 'minio' # 可选值：minio、cos
+
+stb:
+  uid: 'xxxxxxxxx@etv1'     # IPTV 用户名
+  mac: 'xx:xx:xx:xx:xx:xx' # 机顶盒Mac地址
+  sn: '000xxxxxxxxxxxxxxx' # 机顶盒SN码
+  ip: '22.77.xx.x' # 专网IP地址
+  type: 'B860A' # 机顶盒型号
+  auth_host: '222.68.208.73:7001' # 认证服务器地址
+
+epg:
+  generator: 'Deny'
+  source: 'Shanghai Telecom Iptv Spider'
+  xml_url: ''
+  fetch_cron: '0 0 8,16,23 * * *'
+
+#oss:
+#  enable: false
+#  upload_cron: '0 20 0,8,16 * * *' # 每天 0，8，16 点 20 分执行
+#  endpoint: 'https://xxxxxxxxxx.cos.ap-shanghai.myqcloud.com'
+#  access-key: 'xxxxxxxxx'
+#  secret-key: 'xxxxxxxxx'
+
+oss:
+  enable: false
+  upload_cron: '0 20 0,8,16 * * *'
+  endpoint: 'xxx.com'
+  use-ssl: false
+  bucket: 'epg'
+  access-key: 'xxxxxxxxx'
+  secret-key: 'xxxxxxxxx'
+
+# redis configuration
+redis:
+  db: 0
+  addr: '10.0.0.10:6379'
+  password: ''
+
+cache:
+  type: memory    # memory、redis
+  prefix: 'CM'
+  memory_interval: 60        # 使用内存缓存时生效, 内存回收间隔
+  default_timeout: 240       # 默认缓存时间 单位：分钟
+
+# mysql connect configuration
+mysql:
+  path: '10.0.0.200'
+  config: 'parseTime=True'
+  db-name: 'iptv_spider'
+  username: 'spider'
+  password: 'sh-tel-spider'
+  max-idle-conns: 10
+  max-open-conns: 100
+  log-mode: 'error'
+  log-zap: false
+
+# zap logger configuration
+zap:
+  level: 'info'
+  format: 'console'
+  prefix: '[iptv-spider]'
+  director: 'log'
+  link-name: 'latest_log'
+  show-line: false
+  encode-level: 'LowercaseColorLevelEncoder'
+  stacktrace-key: 'stacktrace'
+  log-in-console: false
+

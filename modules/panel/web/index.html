@@ -1,0 +1,777 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>上海电信 IPTV · 控制台</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/app.js"></script>
+</head>
+<body>
+<div id="sidebar-backdrop" class="sidebar-backdrop" aria-hidden="true"></div>
+<aside>
+  <div class="aside-brand-row">
+    <a class="brand" href="/">
+      <div class="brand-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg>
+      </div>
+      <div class="brand-text">
+        <span class="brand-title">IPTV 控制台</span>
+        <span class="brand-desc">上海电信 · LAN PANEL</span>
+      </div>
+    </a>
+    <button type="button" id="sidebar-close-btn" class="sidebar-close-btn" aria-label="关闭导航栏">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <nav aria-label="主导航">
+    <button class="active" data-tab="channels">
+      <span class="nav-icon">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg>
+      </span>
+      <span class="nav-label">频道管理</span>
+      <span class="nav-num">01</span>
+    </button>
+    <button data-tab="account">
+      <span class="nav-icon">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+      </span>
+      <span class="nav-label">IPTV配置</span>
+      <span class="nav-num">02</span>
+    </button>
+    <button data-tab="scan">
+      <span class="nav-icon">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4.93 4.93a10 10 0 0 1 14.14 0"/><path d="M7.76 7.76a6 6 0 0 1 8.48 0"/><circle cx="12" cy="12" r="2"/><line x1="12" y1="12" x2="12" y2="21"/></svg>
+      </span>
+      <span class="nav-label">组播扫描</span>
+      <span class="nav-num">03</span>
+    </button>
+    <button data-tab="ai">
+      <span class="nav-icon">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+      </span>
+      <span class="nav-label">智能识别</span>
+      <span class="nav-num">04</span>
+    </button>
+    <button data-tab="epg">
+      <span class="nav-icon">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="8" cy="15" r="1.5"/><circle cx="12" cy="15" r="1.5"/><circle cx="16" cy="15" r="1.5"/></svg>
+      </span>
+      <span class="nav-label">EPG 节目单</span>
+      <span class="nav-num">05</span>
+    </button>
+  </nav>
+  <div class="aside-note">
+    <div class="aside-status">
+      <span class="pulse-dot"></span> 本地服务正常
+    </div>
+    <p>SHANGHAI TELECOM IPTV</p>
+  </div>
+</aside>
+
+<main>
+  <div class="mobile-topbar">
+    <button type="button" id="mobile-menu-btn" class="mobile-menu-btn" aria-label="打开导航">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <div class="mobile-brand">
+      <div class="mobile-brand-icon">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg>
+      </div>
+      <span class="mobile-brand-title">IPTV 控制台</span>
+    </div>
+    <div class="mobile-topbar-actions">
+      <button id="mobile-reload-btn" type="button" class="mobile-icon-btn" title="刷新数据" aria-label="刷新数据">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      </button>
+    </div>
+  </div>
+  <header>
+    <div>
+      <div class="eyebrow"><span class="pulse-dot" style="width:5px;height:5px;"></span> IPTV WORKSPACE · CONTROL PANEL</div>
+      <h1 id="page-title">频道管理</h1>
+    </div>
+    <div class="header-actions">
+      <button id="reload" class="secondary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        刷新数据
+      </button>
+      <button id="save-settings">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        保存设置
+      </button>
+    </div>
+  </header>
+
+  <section id="login" class="card" hidden style="max-width: 520px; margin: 40px auto;">
+    <h2>连接管理面板</h2>
+    <p>输入服务端 IPTV_PANEL_TOKEN。令牌仅保存在当前浏览器会话中。</p>
+    <form id="login-form" class="inline" style="display:flex; gap:10px;">
+      <input id="token" type="password" placeholder="面板访问令牌" autocomplete="current-password" required style="flex:1;">
+      <button type="submit">连接</button>
+    </form>
+    <p id="login-error" role="alert" style="color:var(--live-red); margin-top:10px;"></p>
+  </section>
+
+  <div id="workspace" hidden>
+    <!-- Stats Metric Cards -->
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-icon stat-icon-primary">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg>
+        </div>
+        <div class="stat-info">
+          <span>全部频道</span>
+          <strong id="count-total">0</strong>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon stat-icon-success">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <div class="stat-info">
+          <span>已启用频道</span>
+          <strong id="count-enabled">0</strong>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon stat-icon-warning">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <div class="stat-info">
+          <span>待识别频道</span>
+          <strong id="count-unknown">0</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 1: Channels -->
+    <section class="tab" id="tab-channels">
+      <div class="channel-subnav-container">
+        <div class="channel-subnav" role="tablist">
+          <button type="button" class="channel-subnav-btn active" data-channel-view="list">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            频道列表
+          </button>
+          <button type="button" class="channel-subnav-btn" data-channel-view="sorting">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+            分组与排序
+          </button>
+          <button type="button" class="channel-subnav-btn" data-channel-view="mapping">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+            关键词映射
+            <span id="mapping-badge" class="subnav-badge" hidden>0</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Sub-view 1: Channel List -->
+      <div id="channel-view-list" class="channel-view-panel">
+        <div class="card">
+        <div class="section-head">
+          <div>
+            <h2>频道库</h2>
+            <p>配置分组与台标，修改后立即应用于播放列表及导出订阅。</p>
+          </div>
+          <div class="actions">
+            <button id="sync" class="secondary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              同步运营商频道
+            </button>
+            <button id="batch-probe-btn" class="secondary" title="一键探测所有启用频道的视频分辨率规格">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              一键探测
+            </button>
+            <button id="batch-download-logos" class="secondary" title="将所有频道的在线台标下载保存到本地存储">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              本地化全部台标
+            </button>
+            <button id="new-channel">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              添加频道
+            </button>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <div class="search-wrap">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="search" placeholder="搜索频道名称、分组或源地址..." aria-label="搜索频道">
+          </div>
+          <select id="channel-filter" aria-label="筛选频道" style="width: auto; min-width: 140px;">
+            <option value="all">全部频道</option>
+            <option value="unknown">待识别频道</option>
+            <option value="enabled">已启用频道</option>
+            <option value="disabled">已停用频道</option>
+          </select>
+          <div class="export-group">
+            <button id="copy-m3u-btn" class="secondary" type="button" title="复制 M3U 播放列表地址，原生支持 TiviMate / Televizo 自动回看与时移">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              复制 M3U 链接
+            </button>
+            <a class="button secondary" href="/api/m3u8" download="iptv.m3u">导出 M3U</a>
+            <a class="button secondary" href="/api/playlist?mode=unicast" download="iptv-unicast.m3u">单播 M3U</a>
+            <a class="button secondary" href="/api/playlist?mode=http" download="iptv-http.m3u">HTTP M3U</a>
+            <a class="button secondary" href="/api/playlist?fmt=txt" download="iptv.txt">TXT</a>
+            <a class="button secondary" href="/api/playlist?fmt=json" download="iptv.json">JSON</a>
+          </div>
+        </div>
+
+        <p id="refresh-status" class="muted"></p>
+
+        <div id="probe-progress-card" class="probe-progress-card" hidden>
+          <div class="probe-progress-header">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="pulse-dot"></span>
+              <span id="probe-progress-title" style="font-weight:600; font-size:13px;">正在一键探测分辨率…</span>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <span id="probe-progress-count" style="font-size:12px; color:var(--text-muted);">0 / 0</span>
+              <button id="stop-probe-btn" type="button" class="secondary" style="font-size:12px; padding:2px 8px; height:26px; line-height:1;">停止探测</button>
+            </div>
+          </div>
+          <div class="probe-progress-track">
+            <div id="probe-progress-fill" class="probe-progress-fill" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <input id="table-logo-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif,image/x-icon" style="display:none">
+          <table class="channel-table">
+            <thead>
+              <tr>
+                <th class="col-name">名称</th>
+                <th class="col-id">频道号</th>
+                <th class="col-logo">台标</th>
+                <th class="col-status">状态</th>
+                <th class="col-res">分辨率</th>
+                <th class="col-group">分组</th>
+                <th class="col-url">内网源地址</th>
+                <th class="col-actions">操作</th>
+              </tr>
+            </thead>
+            <tbody id="channel-rows"></tbody>
+          </table>
+        </div>
+
+        <div id="empty" class="empty" hidden>
+          <div class="empty-icon">📺</div>
+          <h3>暂无匹配频道</h3>
+          <p>请先配置 IPTV 账号后同步频道，或通过组播扫描探测，也可以手动添加。</p>
+        </div>
+
+        <div class="table-footer">
+          <span id="result-count"></span>
+          <div class="actions">
+            <button id="prev-page" class="secondary">上一页</button>
+            <span id="page-label" style="font-weight: 500; padding: 0 4px;"></span>
+            <button id="next-page" class="secondary">下一页</button>
+          </div>
+        </div>
+      </div>
+      </div>
+
+      <!-- Sub-view 2: Group & In-Group Sorting -->
+      <div id="channel-view-sorting" class="channel-view-panel" hidden>
+        <div class="card">
+          <div class="section-head">
+            <div>
+              <h2>分组展示排序</h2>
+              <p>定义频道列表与导出播放列表（M3U/TXT/JSON）中的分组排序。排在前面的分组将优先展示，央视内部自动按数字顺序排列。</p>
+            </div>
+          </div>
+          <div id="group-order-list" class="group-order-container"></div>
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; margin-bottom: 12px;">
+            <input id="new-group-name" placeholder="输入分组名称或从右侧选择" style="flex: 1; min-width: 140px; height: 36px;">
+            <button id="add-group-btn" type="button" class="secondary" style="height: 36px; line-height: 1;">添加分组</button>
+            <select id="quick-add-group-select" style="width: auto; min-width: 140px; height: 36px;">
+              <option value="">快速添加现有分组…</option>
+            </select>
+          </div>
+          <div class="actions">
+            <button id="save-group-order-btn">保存分组排序</button>
+            <button id="reset-group-order-btn" class="secondary">恢复默认排序</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-head">
+            <div>
+              <h2>组内频道排序</h2>
+              <p>自定义指定分组内的频道排列顺序。可按住拖动或使用上下箭头移动频道，也可一键按台号、名称、分辨率快速排序。</p>
+            </div>
+            <div class="actions">
+              <button id="save-in-group-order-btn" type="button">保存组内排序</button>
+              <button id="reset-in-group-order-btn" class="secondary" type="button">恢复默认排序</button>
+            </div>
+          </div>
+          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+            <label style="display:flex; align-items:center; gap:8px; font-weight:600; font-size:13px;">
+              选择分组：
+              <select id="group-channel-select" style="min-width: 180px; height: 36px;"></select>
+            </label>
+            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-left:auto;">
+              <span class="muted" style="font-size:12px;">快速排列：</span>
+              <button id="sort-in-group-by-id" type="button" class="secondary" style="height:32px; font-size:12px; padding:0 10px;" title="数字台号升序；央视频道自动按央视数字顺序">按台号/央视顺序</button>
+              <button id="sort-in-group-by-name" type="button" class="secondary" style="height:32px; font-size:12px; padding:0 10px;" title="按频道名称自然字典序">按名称</button>
+              <button id="sort-in-group-by-res" type="button" class="secondary" style="height:32px; font-size:12px; padding:0 10px;" title="高分辨率（4K > 1080P > 720P）排在前面">按分辨率优先</button>
+            </div>
+          </div>
+          <div id="in-group-channel-list" class="in-group-channel-container"></div>
+        </div>
+      </div>
+
+      <!-- Sub-view 3: Channel Keyword Mappings -->
+      <div id="channel-view-mapping" class="channel-view-panel" hidden>
+        <div class="card">
+          <div class="section-head">
+            <div>
+              <h2>频道关键词映射</h2>
+              <p>保存自定义关键词与目标频道（数字台号/运营商ID）的映射关系。匹配或智能识别频道时将优先采用。</p>
+            </div>
+          </div>
+          <div class="table-wrap" style="max-height: 280px; overflow-y: auto; margin-bottom: 12px;">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 22%;">关键词</th>
+                  <th style="width: 24%;">目标频道</th>
+                  <th style="width: 14%;">数字台号</th>
+                  <th style="width: 20%;">运营商 ID</th>
+                  <th style="width: 12%;">分组</th>
+                  <th style="width: 8%;">操作</th>
+                </tr>
+              </thead>
+              <tbody id="mapping-rows"></tbody>
+            </table>
+          </div>
+          <div id="mapping-empty" class="empty" hidden style="padding: 12px 16px; margin-bottom: 12px;">
+            <p class="muted" style="margin: 0; font-size: 13px;">暂无保存的关键词映射。在编辑频道时点击「匹配台号」并勾选「保存关键词映射」即可自动保存，也可以在下方手动添加。</p>
+          </div>
+          <form id="add-mapping-form" style="display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; pt: 4px;">
+            <label style="flex: 1; min-width: 110px;">关键词<input name="keyword" placeholder="如 cctv16、第一财经" required></label>
+            <label style="flex: 1; min-width: 130px;">目标频道名称<input name="target_name" placeholder="如 CCTV-16 4K" required></label>
+            <label style="width: 90px;">数字台号<input name="target_id" placeholder="如 139" required></label>
+            <label style="flex: 1; min-width: 140px;">运营商 ID<input name="operator_id" placeholder="可选"></label>
+            <label style="width: 110px;">分组<input name="group" placeholder="可选"></label>
+            <button type="submit" class="secondary" style="height: 38px; line-height: 1;">添加映射</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: Account & Forwarding -->
+    <section class="tab" id="tab-account" hidden>
+      <div class="card">
+        <div class="section-head">
+          <div>
+            <h2>机顶盒身份</h2>
+            <p>认证使用系统默认网络。机顶盒认证 IP 请填写原机顶盒身份中的地址。</p>
+          </div>
+          <label class="check">
+            <input data-setting="iptv.enabled" type="checkbox">
+            启用 IPTV 认证
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>IPTV 账号<input data-setting="iptv.uid" placeholder="xxxxxxxx@etv3" autocomplete="off"></label>
+          <label>机顶盒 SN<input data-setting="iptv.sn" autocomplete="off"></label>
+          <label>机顶盒 MAC<input data-setting="iptv.mac" placeholder="AA:BB:CC:DD:EE:FF"></label>
+          <label>认证使用的机顶盒 IPv4<input data-setting="iptv.ip" placeholder="点分 IPv4，自动转为运营商格式"></label>
+          <label>机顶盒型号<input data-setting="iptv.type"></label>
+          <label>认证服务器 host:port<input data-setting="iptv.auth_host"></label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>播放与转发</h2>
+        <p>频道导出、扫描探测和截图识别共用这组设置。</p>
+        <div class="form-grid">
+          <label>转发服务 host:port<input data-setting="forward.address" placeholder="192.168.190.1:4022"></label>
+          <label>转发路径
+            <select data-setting="forward.protocol">
+              <option value="rtp">/rtp/</option>
+              <option value="udp">/udp/</option>
+            </select>
+          </label>
+          <label>默认播放方式
+            <select data-setting="forward.play_mode">
+              <option value="">组播转发</option>
+              <option value="unicast">单播（RTSP 转 HTTP）</option>
+              <option value="http">运营商 HTTP 单播</option>
+            </select>
+          </label>
+          <div class="fcc-field-row wide">
+            <label for="fcc-select" class="fcc-field-title">快速换台 FCC 服务器</label>
+            <div class="fcc-inline-row">
+              <select id="fcc-select" aria-label="快速换台 FCC 服务器">
+                <option value="">不使用快速换台</option>
+                <option value="__custom__">自定义输入…</option>
+              </select>
+              <input id="forward-fcc-input" data-setting="forward.fcc" placeholder="IP:端口，如 124.75.26.151:15970" autocomplete="off" hidden>
+            </div>
+          </div>
+          <div class="fcc-field-row wide">
+            <label for="catchup-template-select" class="fcc-field-title">回看模板参数</label>
+            <div class="fcc-inline-row">
+              <select id="catchup-template-select" aria-label="回看模板参数">
+                <option value="&amp;utc=${start}&amp;lutc=${end}">&amp;utc=${start}&amp;lutc=${end} (Televizo / 推荐)</option>
+                <option value="&amp;start={utc}&amp;end={utcend}">&amp;start={utc}&amp;end={utcend} (TiviMate 标准)</option>
+                <option value="&amp;utc={utc}&amp;lutc={utcend}">&amp;utc={utc}&amp;lutc={utcend} (兼容格式)</option>
+                <option value="&amp;start=${timestamp}&amp;duration=${duration}">&amp;start=${timestamp}&amp;duration=${duration} (时长格式)</option>
+                <option value="__custom__">自定义输入…</option>
+              </select>
+              <input id="forward-catchup-template-input" data-setting="forward.catchup_template" placeholder="如 &amp;utc=${start}&amp;lutc=${end}" autocomplete="off" hidden>
+            </div>
+          </div>
+        </div>
+        <small>转发地址预览：</small>
+        <code id="url-preview"></code>
+      </div>
+    </section>
+
+    <!-- TAB 3: Multicast Scan -->
+    <section class="tab" id="tab-scan" hidden>
+      <div class="card">
+        <h2>发现组播频道</h2>
+        <p>通过已配置的转发服务探测 MPEG-TS 数据，发现的频道自动进入“待识别”。</p>
+        <div class="form-grid">
+          <label>起始组播 IPv4<input data-setting="scan.start_ip"></label>
+          <label>结束组播 IPv4<input data-setting="scan.end_ip"></label>
+          <label>起始端口<input data-setting="scan.start_port" type="number" min="1" max="65535"></label>
+          <label>结束端口<input data-setting="scan.end_port" type="number" min="1" max="65535"></label>
+          <label>并发数<input data-setting="scan.workers" type="number" min="1" max="32"></label>
+          <label>单个地址超时（秒）<input data-setting="scan.timeout" type="number" min="1" max="30"></label>
+        </div>
+        <div class="notice">每次最多 65,536 个 IP / 端口组合。请填写你使用的 IPTV 专网范围；并发数越高，转发服务的负载越大。</div>
+        <div class="actions">
+          <button id="start-scan">保存并开始扫描</button>
+          <button id="stop-scan" class="secondary" disabled>停止扫描</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-head">
+          <h2>扫描进度</h2>
+          <span id="scan-state" class="badge">待命</span>
+        </div>
+        <progress id="scan-progress" max="1" value="0"></progress>
+        <p id="scan-count" class="muted">尚未开始扫描</p>
+        <p id="scan-error" class="muted"></p>
+      </div>
+    </section>
+
+    <!-- TAB 4: AI Recognition & Logos -->
+    <section class="tab" id="tab-ai" hidden>
+      <div class="card">
+        <div class="section-head">
+          <div>
+            <h2>台标源</h2>
+            <p>支持配置多个台标源（GitHub 目录或兼容 /api/list 的台标库）。按列表从上到下优先匹配，优先选用常规台标，深色台标自动作为后备。</p>
+          </div>
+          <div class="actions">
+            <button id="save-logos">保存台标源</button>
+            <button id="refresh-logos" class="secondary">更新台标目录</button>
+            <button id="reset-logos" class="secondary">恢复默认源</button>
+          </div>
+        </div>
+        <div id="logo-sources-list" class="logo-sources-container"></div>
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; margin-bottom: 8px;">
+          <input id="new-logo-source-input" placeholder="输入 GitHub 仓库目录 URL 或 /api/list 台标库地址" style="flex: 1; min-width: 260px; height: 36px;">
+          <button id="add-logo-source-btn" type="button" class="secondary" style="height: 36px; line-height: 1;">添加台标源</button>
+        </div>
+        <p id="logos-status" role="status" style="margin-top: 8px; font-size: 13px; color: var(--text-muted);"></p>
+      </div>
+
+      <div class="card">
+        <h2>未知频道识别</h2>
+        <p>从直播流截取一帧画面，通过台标、角标和字幕识别频道。</p>
+        <div class="form-grid">
+          <label class="wide">OpenAI 兼容 API Base URL<input data-setting="ai.base_url" type="url" placeholder="https://api.example.com/v1"></label>
+          <label>API key<input data-setting="ai.api_key" type="password" placeholder="留空保留已保存的 key" autocomplete="new-password"><small id="key-status"></small></label>
+          <label>视觉模型名称<input data-setting="ai.model" placeholder="填写服务商支持图片输入的模型 ID"></label>
+          <label class="check"><input id="clear-key" type="checkbox">清除已保存的 API key</label>
+        </div>
+        <div class="notice">点击识别后，会将频道截图发送给所配置的 API，可能产生服务商费用。服务端需要安装 ffmpeg。识别结果只作为建议，确认后才会改名和分组。</div>
+        <div class="actions">
+          <button id="save-ai">保存识别设置</button>
+          <button id="show-unknown" class="secondary">查看待识别频道</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: Modern EPG Guide -->
+    <section class="tab" id="tab-epg" hidden>
+      <!-- Overview & XMLTV Subscription Card -->
+      <div class="card epg-overview-card">
+        <div class="section-head">
+          <div>
+            <h2>EPG 节目单与订阅</h2>
+            <p>同步运营商节目单，支持节目时间线、实时播出进度与时移回看。频道 ID 修改后，XMLTV 会自动跟随。</p>
+          </div>
+          <div class="actions">
+            <a class="button secondary" href="/api/epg" target="_blank" rel="noopener">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              导出 XMLTV
+            </a>
+            <button id="copy-epg-url" class="secondary" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              复制 XMLTV 地址
+            </button>
+            <button id="toggle-epg-settings" class="secondary" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              同步配置
+            </button>
+          </div>
+        </div>
+
+        <!-- Modern Status Chips -->
+        <div class="epg-status-chips">
+          <div class="epg-chip" id="chip-backend">
+            <span class="chip-label">存储引擎</span>
+            <strong id="val-backend">本地文件</strong>
+          </div>
+          <div class="epg-chip" id="chip-state">
+            <span class="chip-label">同步状态</span>
+            <strong id="val-state"><span class="pulse-dot"></span>就绪</strong>
+          </div>
+          <div class="epg-chip" id="chip-channels">
+            <span class="chip-label">覆盖频道</span>
+            <strong id="val-channels">0 / 0</strong>
+          </div>
+          <div class="epg-chip" id="chip-programmes">
+            <span class="chip-label">已收录节目</span>
+            <strong id="val-programmes">0 条</strong>
+          </div>
+          <div class="epg-chip" id="chip-updated">
+            <span class="chip-label">最后同步时间</span>
+            <strong id="val-updated">尚未同步</strong>
+          </div>
+        </div>
+
+        <p id="epg-status" role="status" class="muted" style="margin-top: 10px;"></p>
+        <progress id="epg-progress" max="1" value="0"></progress>
+
+        <div class="epg-url-box">
+          <span class="url-label">XMLTV 接口地址：</span>
+          <code id="epg-url"></code>
+        </div>
+
+        <!-- Collapsible Settings Panel -->
+        <div id="epg-settings-panel" class="epg-settings-panel" hidden>
+          <div class="form-grid">
+            <label class="check"><input data-setting="epg.enabled" type="checkbox">自动同步节目单</label>
+            <label>更新间隔（小时）<input data-setting="epg.interval_hours" type="number" min="1" max="168"></label>
+            <label>历史天数（时移回看）<input data-setting="epg.past_days" type="number" min="0" max="14"></label>
+            <label>未来天数（节目预告）<input data-setting="epg.future_days" type="number" min="0" max="7"></label>
+          </div>
+          <div class="actions">
+            <button id="save-epg">保存 EPG 设置</button>
+            <button id="sync-epg" class="secondary">立即同步</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Channel Guide & Interactive Schedule Card -->
+      <div class="card">
+        <!-- Channel Hero Banner -->
+        <div id="epg-channel-hero" class="epg-channel-hero">
+          <div class="hero-left">
+            <div class="epg-hero-logo-box" id="epg-hero-logo-box">
+              <img id="epg-hero-logo" alt="" hidden>
+              <div id="epg-hero-placeholder" class="logo-placeholder">📺</div>
+            </div>
+            <div class="hero-details">
+              <div class="hero-title-row">
+                <h3 id="epg-hero-name">请选择频道</h3>
+                <span id="epg-hero-group" class="badge">分组</span>
+                <span id="epg-hero-catchup" class="badge">回看</span>
+              </div>
+              <p id="epg-hero-meta" class="hero-meta">暂无选择</p>
+            </div>
+          </div>
+          <div class="hero-actions">
+            <button id="epg-prev-channel" class="secondary" type="button">◀ 上一频道</button>
+            <button id="epg-next-channel" class="secondary" type="button">下一频道 ▶</button>
+            <button id="epg-hero-play" class="button" type="button">▶ 播放此频道</button>
+          </div>
+        </div>
+
+        <!-- Main Toolbar -->
+        <div class="toolbar epg-toolbar">
+          <div class="epg-channel-select-wrap">
+            <select id="epg-channel" aria-label="EPG 频道"></select>
+          </div>
+          <div class="epg-date-wrap">
+            <input id="epg-date" type="date" aria-label="节目日期">
+            <button id="epg-load" class="secondary epg-refresh-btn" type="button" title="刷新当日节目单">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              <span>刷新</span>
+            </button>
+          </div>
+          <div class="search-wrap epg-search-wrap">
+            <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="epg-search" placeholder="在节目单中搜索..." aria-label="搜索节目单">
+          </div>
+        </div>
+
+        <!-- Horizontal Interactive Date Ribbon -->
+        <div id="epg-date-ribbon" class="epg-date-ribbon" aria-label="快捷日期切换"></div>
+
+        <!-- Category Filter Bar -->
+        <div class="epg-filter-bar">
+          <div class="filter-tabs">
+            <button class="filter-tab active" data-filter="all">全部 (<span id="count-all">0</span>)</button>
+            <button class="filter-tab" data-filter="live">正在直播 (<span id="count-live">0</span>)</button>
+            <button class="filter-tab" data-filter="catchup">可回看 (<span id="count-catchup">0</span>)</button>
+            <button class="filter-tab" data-filter="upcoming">待播出 (<span id="count-upcoming">0</span>)</button>
+          </div>
+          <p id="epg-message" class="epg-message"></p>
+        </div>
+
+        <!-- Modern Schedule Timeline -->
+        <div id="epg-programmes" class="epg-timeline"></div>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <div>iptv-spider · IPTV 管理面板</div>
+    <span>IPTV 认证 · 频道管理 · 组播发现 · 现代 EPG 导视</span>
+  </footer>
+</main>
+
+<!-- Dialogs -->
+<dialog id="play-dialog">
+  <div class="section-head">
+    <h2 id="play-title">播放地址</h2>
+    <button type="button" class="secondary" data-close="play-dialog">关闭</button>
+  </div>
+  <div class="form-grid">
+    <label>播放方式
+      <select id="play-mode">
+        <option value="http">运营商 HTTP / HLS</option>
+        <option value="unicast">单播（RTSP 转 HTTP）</option>
+        <option value="multicast">组播转发</option>
+      </select>
+    </label>
+    <label class="check"><input id="play-replay" type="checkbox">回看</label>
+    <label id="play-start-label" hidden>开始时间<input id="play-start" type="datetime-local"></label>
+    <label id="play-end-label" hidden>结束时间<input id="play-end" type="datetime-local"></label>
+  </div>
+  <p id="play-notice" style="color:var(--badge-amber); font-weight: 500;"></p>
+  <code id="play-address"></code>
+  <div class="actions" style="margin-top: 16px;">
+    <a id="play-open" class="button" target="_blank" rel="noopener">打开播放地址</a>
+  </div>
+  <p class="muted" style="margin-top: 14px;">可复制地址到支持 HLS / MPEG-TS 的播放器；回看时间使用本机时区。</p>
+</dialog>
+
+<dialog id="channel-dialog">
+  <form id="channel-form">
+    <div class="section-head">
+      <h2 id="dialog-title">编辑频道</h2>
+      <button type="button" class="secondary" data-close="channel-dialog">关闭</button>
+    </div>
+    <div class="form-grid">
+      <label>
+        <span style="display:flex; justify-content:space-between; align-items:center;">
+          <span>频道 ID（数字ID / EPG）</span>
+          <button id="match-channel-id" type="button" class="secondary" style="font-size:12px; padding:2px 8px; line-height:1.2; height:auto; cursor:pointer;" title="根据频道名称模糊匹配运营商台号">匹配台号</button>
+        </span>
+        <input name="id" maxlength="160" value="0" placeholder="如 1、2、51，用于播放列表及EPG匹配；默认 0 为无效ID（不同清晰度可共用相同数字ID）">
+      </label>
+      <label>运营商 ID（字母ID / 单播回看）<input name="operator_id" maxlength="160" placeholder="如 ch00000000000000001001，用于单播及回看"></label>
+      <div id="match-candidates-box" class="wide notice" hidden style="margin: 0; padding: 10px 14px; background: var(--bg-card, #fff); border: 1px solid var(--line, #e2e8f0); border-radius: 8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
+          <div style="font-size: 12px; font-weight: 600; display:flex; align-items:center; gap:6px;">
+            <span>🔍 模糊匹配候选（点击选择，支持保存映射）</span>
+            <span id="match-candidates-count" class="muted" style="font-weight: normal; font-size: 11px;"></span>
+          </div>
+          <button id="close-candidates-btn" type="button" class="secondary" style="font-size:11px; padding:1px 6px; height:auto; line-height:1.2; cursor:pointer;" title="关闭候选列表">✕</button>
+        </div>
+        <div id="match-candidates-list" style="max-height: 150px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px;"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; border-top: 1px solid var(--line, #e2e8f0); padding-top: 8px;">
+          <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; margin:0; cursor:pointer;">
+            <input type="checkbox" id="save-mapping-check" checked style="margin:0; width:auto;">
+            <span>保存此关键词映射（下次自动识别）</span>
+          </label>
+          <button id="apply-candidate-btn" type="button" class="primary" style="font-size:12px; padding:3px 12px; height:auto; line-height:1.4; cursor:pointer;">应用所选</button>
+        </div>
+      </div>
+      <label>
+        <span style="display:flex; justify-content:space-between; align-items:center;">
+          <span>分辨率（流规格）</span>
+          <button id="probe-channel-btn" type="button" class="secondary" style="font-size:12px; padding:2px 8px; line-height:1.2; height:auto; cursor:pointer;" title="从流中实时探测视频分辨率">探测流</button>
+        </span>
+        <input name="resolution" maxlength="32" placeholder="如 1920x1080、3840x2160、720x576">
+      </label>
+      <label>名称<input name="name" required maxlength="200"></label>
+      <div class="group-field">
+        <label for="existing-group">分组</label>
+        <select id="existing-group" aria-label="选择分组"></select>
+        <div id="custom-group-control" class="custom-group-control" hidden>
+          <input id="channel-group" name="group" maxlength="200" placeholder="输入自定义分组" aria-label="自定义分组名称">
+          <button id="choose-group" type="button" class="secondary" aria-label="返回分组下拉列表" title="选择已有分组">▾</button>
+        </div>
+      </div>
+      <div class="logo-field">
+        <div class="form-row-stacked">
+          <label for="channel-logo">台标 URL / 本地路径</label>
+          <div class="logo-input-wrap">
+            <input id="channel-logo" name="logo" type="text" placeholder="留空自动匹配，或填写图片 URL / 本地路径">
+            <button id="upload-logo-btn" type="button" class="secondary" title="从本地选择并上传台标图片">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              上传台标
+            </button>
+            <button id="download-current-logo" type="button" class="secondary" title="将当前输入的远程台标下载保存到本地">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              下载到本地
+            </button>
+          </div>
+          <input id="logo-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif,image/x-icon" style="display:none">
+        </div>
+        <button id="match-logo" type="button" class="secondary">模型智能匹配台标</button>
+        <small>使用已配置模型，根据名称和分组匹配台标库。</small>
+        <div class="logo-preview" id="logo-preview-box" title="点击或拖拽图片文件到此处上传本地台标">
+          <img id="logo-preview" alt="频道台标预览" referrerpolicy="no-referrer" hidden>
+          <small id="logo-status" role="status">未设置台标（可点击此处上传本地图片）</small>
+        </div>
+      </div>
+      <label class="wide">频道源 URL<input name="url" required placeholder="igmp://239.45.0.1:5140"></label>
+      <label class="wide">单播 / 时移源 URL<input name="unicast_url" placeholder="rtsp://... 或 https://.../live.m3u8"></label>
+      <label>回看天数（0 关闭）<input name="catchup_days" type="number" min="0" max="30" value="0"></label>
+      <label class="check"><input name="enabled" type="checkbox" checked>启用频道</label>
+    </div>
+    <div id="logo-match-result" class="notice" hidden>
+      <p id="logo-match-reason" role="status"></p>
+      <img id="logo-match-image" alt="智能匹配台标" referrerpolicy="no-referrer" hidden>
+      <div class="logo-match-btn-group">
+        <button id="accept-logo-match" type="button" class="secondary" hidden>使用远程台标</button>
+        <button id="download-logo-match" type="button" class="primary" hidden style="display:inline-flex; align-items:center; gap:6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          下载到本地并使用
+        </button>
+      </div>
+    </div>
+    <div id="suggestion" class="notice" hidden></div>
+    <div class="actions">
+      <button type="submit">保存频道</button>
+      <button id="accept-suggestion" type="button" class="secondary" hidden>填入识别建议</button>
+    </div>
+    <p id="channel-error" role="alert" style="color:var(--live-red); margin-top:10px;"></p>
+  </form>
+</dialog>
+
+<dialog id="snapshot-dialog">
+  <div class="section-head">
+    <h2>频道画面</h2>
+    <button type="button" class="secondary" data-close="snapshot-dialog">关闭</button>
+  </div>
+  <p id="snapshot-status"></p>
+  <img id="snapshot-image" alt="频道截图" hidden style="max-width:100%; border-radius:8px; border:1px solid var(--line);">
+</dialog>
+
+<div id="toast" role="status" hidden></div>
+</body>
+</html>

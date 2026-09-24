@@ -1,0 +1,12 @@
+services:
+  iptv:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8888:8888"
+    environment:
+      IPTV_PANEL_TOKEN: ${IPTV_PANEL_TOKEN:?请设置面板访问令牌}
+      TZ: Asia/Shanghai
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml:ro

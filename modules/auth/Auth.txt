@@ -1,0 +1,125 @@
+
+// 主要认证流程
+
+// 1. Get 请求，预认证
+// http://222.68.208.73:7001/iptv3a/4kLogAuth.do
+//    Accept-Encoding: gzip\r\n
+//    Accept-Language: zh-cn\r\n
+//    Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n
+//    User-Agent: webkit;Resolution(PAL,720P,1080P)\r\n
+//    Accept-Charset: utf-8, iso-8859-1, utf-16, *;q=0.7\r\n
+// Query
+// Action=Login
+// UserID=AAAAAAA@etv1
+// SN=000200316121051073023DCC
+// Type=iptv4k
+// Mode=MENU.SMG-4K
+// FCCSupport=1
+// 返回HTML内容 用于下一步
+
+// 2. 解析上一条请求的返回内容
+// 获取Form表单
+// <form action="http://124.75.29.176:7001/iptv3a/4kLogAuth.do" name="postform" method="post">
+//	   <input type="hidden" name="UserID" value="AAAAAAA@etv1" />
+//	   <input type="hidden" name="Action" value="Login" />
+//	   <input type="hidden" name="DynamicAuthIP" value="124.75.29.176" />
+//	   <input type="hidden" name="Mode" value="MENU.SMG-4K" />
+//	   <input type="hidden" name="SN" value="000200316121051073023DCC" />
+// </form>
+// Post 请求
+// http://124.75.29.176:7001/iptv3a/4kLogAuth.do
+//    Accept-Encoding: gzip\r\n
+//    Referer: http://222.68.208.73:7001/iptv3a/4kLogAuth.do?Action=Login&UserID=AAAAAAA@etv1&SN=000200316121051073023DCC&Type=iptv4k&Mode=MENU.SMG-4K\r\n
+//    Accept-Language: zh-cn\r\n
+//    User-Agent: webkit;Resolution(PAL,720P,1080P)\r\n
+//    Origin: http://222.68.208.73:7001\r\n
+//    Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n
+//    Accept-Charset: utf-8, iso-8859-1, utf-16, *;q=0.7\r\n
+// Form URL Encoded: application/x-www-form-urlencoded
+// "UserID" = "AAAAAAA@etv1"
+// "Action" = "Login"
+// "DynamicAuthIP" = "124.75.29.176"
+// "Mode" = "MENU.SMG-4K"
+// "SN" = "000200316121051073023DCC"
+// 返回HTML内容
+
+// 3. 解析上一条请求的返回内容
+// 获取Form表单
+// <script>
+//   	var encrytoken="ad5f3b1a073ae68a81ff9bf64499dd0a";
+// </script>
+// <form id="initform" action="/iptv3a/ottauth" method="post">
+//	<input type="hidden" id="authenticator" name="authenticator" />
+//	<input type="hidden" id="userid" name="userid" value="AAAAAAA@etv1" />
+//	<input type="hidden" id="stbid" name="stbid" value="000200316121051073023DCC" />
+//	<input type="hidden" id="mode" name="mode" value="MENU.SMG" />
+//	<input type="hidden" id="modeurl" name="modeurl" value="" />
+//	<input type="hidden" id="miniplatform" name="miniplatform" value="" />
+//	<input type="hidden" id="fccsupport" name="fccsupport" value="" />
+// </form>
+// Post 请求
+// http://124.75.29.176:7001/iptv3a/ottauth
+//    Accept-Encoding: gzip\r\n
+//    Referer: http://124.75.29.176:7001/iptv3a/4kLogAuth.do\r\n
+//    Accept-Language: zh-cn\r\n
+//    User-Agent: webkit;Resolution(PAL,720P,1080P)\r\n
+//    Origin: http://124.75.29.176:7001\r\n
+//    Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n
+//    Accept-Charset: utf-8, iso-8859-1, utf-16, *;q=0.7\r\n
+// Form URL Encoded: application/x-www-form-urlencoded
+// "authenticator" = "xxxxx" hex字符串，由下列Json进行 AES/ECB/PKCS5Padding 加密而来，密钥: MD5("123456")
+//      {
+//			"Randon": "18805087", 随机生成
+//			"EncryToken": "ad5f3b1a073ae68a81ff9bf64499dd0a", 表单获取
+//			"UserID": "AAAAAAA@etv1",
+//			"SN": "000200316121051073023DCC",
+//			"IP": "022,077,000,001", 当前IP地址
+//			"MAC": "xx:xx:xx:xx:xx:xx", MAC地址
+//			"MagicCode": "CTC", 固定
+//			"UpdateTime": "20230301175307" 暂时未知，需要梳理，貌似是暂时的固定
+//		}
+// "userid" = "AAAAAAA@etv1"
+// "stbid" = "000200316121051073023DCC"
+// "mode" = "MENU.SMG"
+// "modeurl" = ""
+// "miniplatform" = ""
+// "fccsupport" = ""
+//
+// 返回
+//	var userid="AAAAAAA@etv1";
+//	var usertoken="AAAAAAA@etv1***01ffd77e394d406f";
+//	var epggroup="1060";
+//	var mode="MENU.SMG";
+//	var epgProviderParamArray=["EPGDomain=http:\/\/218.83.165.50:8084\/iptvepg\/function\/index.jsp"];
+//	var channelArray=[]
+//	var serviceEntryArray=[];
+//	var adblackuser="no";
+//	var adpushdomain="http:\/\/124.75.29.174:8088\/Behavior\/query\/queryRecommends";
+//	var epgDomain="http:\/\/218.83.165.50:8084\/iptvepg\/function\/index.jsp";
+//	var adswitch="on";
+//	var adtime="5000";
+//	var adStayTime="5000";
+//	var returnurl=null;
+//
+// 		<form id="initform" action="/iptv3a/hdlogin92" method="post">
+//        <input type="hidden" id="userid" name="userid" value="AAAAAAA@etv1" />
+//        <input type="hidden" id="usertoken" name="usertoken" value="AAAAAAA@etv1***01ffd77e394d406f" />
+//        <input type="hidden" id="usergroup" name="usergroup" value="8888" />
+//        <input type="hidden" id="epggroup" name="epggroup" value="1060" />
+//        <input type="hidden" id="stbid" name="stbid" value="000200316121051073023DCC" />
+//        <input type="hidden" id="mode" name="mode" value="MENU.SMG" />
+//        <input type="hidden" id="epgdomain" name="epgdomain" value="http://218.83.165.50:8084/iptvepg/function/index.jsp" />
+//        <input type="hidden" id="epgproviderdomain" name="epgproviderdomain" value="" />
+//      </form>
+//
+//      <form id="epgform" action="http://218.83.165.50:8084/iptvepg/function/index.jsp" method="post">
+//        <input type="hidden" id="UserID" name="UserID" value="AAAAAAA@etv1" />
+//        <input type="hidden" id="Action" name="Action" value="Login" />
+//        <input type="hidden" id="UserToken" name="UserToken" value="AAAAAAA@etv1***01ffd77e394d406f" />
+//        <input type="hidden" id="UserGroupNMB" name="UserGroupNMB" value="8888" />
+//        <input type="hidden" id="EPGGroupNMB" name="EPGGroupNMB" value="1060" />
+//        <input type="hidden" id="stbid" name="stbid" value="0" />
+//        <input type="hidden" id="Mode" name="Mode" value="MENU.SMG" />
+//        <input type="hidden" id="EPGProviderDomain" name="EPGProviderDomain" value="" />
+//        <input type="hidden" id="DynamicAuthIP" name="DynamicAuthIP" value="124.75.29.176" />
+//      </form>
