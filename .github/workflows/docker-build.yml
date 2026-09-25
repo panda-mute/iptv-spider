@@ -3,7 +3,7 @@ name: Build and Push Docker Image
 # 构建 iptv-spider Docker 镜像并推送到 GitHub Container Registry (GHCR) 及 Docker Hub。
 # 触发方式：
 #   1) 推送 main 或 master 分支自动构建 latest
-#   2) 推送版本 tag（如 v1.0.0）自动构建版本 tag + latest
+#   2) 推送版本 tag（如 1.0 或 v1.0.0）自动构建版本 tag + latest
 #   3) 在 Actions 页面手动运行 (workflow_dispatch)，支持输入自定义 tag
 #
 # 依赖 Secrets (非必填，填入即推送 Docker Hub):
@@ -16,12 +16,12 @@ on:
       - main
       - master
     tags:
-      - 'v*.*.*'
       - 'v*'
+      - '[0-9]*'
   workflow_dispatch:
     inputs:
       tag:
-        description: '镜像 tag（如 1.0.0 或 latest）'
+        description: '镜像 tag（如 1.0 或 latest）'
         required: true
         default: 'latest'
 
