@@ -154,6 +154,13 @@ func (s *Service) ServeLocalLogo(w http.ResponseWriter, r *http.Request) {
 	fullPath := filepath.Join(dir, file)
 	info, err := os.Stat(fullPath)
 	if err != nil || info.IsDir() {
+		if data, readErr := presetLogosFS.ReadFile("preset_logos/" + file); readErr == nil {
+			w.Header().Set("Content-Type", "image/png")
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(data)
+			return
+		}
 		http.NotFound(w, r)
 		return
 	}

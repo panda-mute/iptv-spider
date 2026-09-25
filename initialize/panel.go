@@ -14,6 +14,8 @@ import (
 	"iptv-spider/modules/panel"
 	"iptv-spider/modules/spider"
 	"iptv-spider/utils"
+
+	"go.uber.org/zap"
 )
 
 func Panel() (*panel.Service, error) {
@@ -32,6 +34,11 @@ func Panel() (*panel.Service, error) {
 	}
 	s := panel.NewService(store)
 	s.LogosDir = filepath.Join(dataDir, "logos")
+	if err := s.EnsurePresetLogos(); err != nil {
+		if global.LOG != nil {
+			global.LOG.Warn("初始化预设台标失败", zap.Error(err))
+		}
+	}
 	if err := s.LoadLogoSources(); err != nil {
 		return nil, err
 	}

@@ -353,6 +353,7 @@ func (s *Store) Import(channels []Channel) error {
 	channels = append([]Channel(nil), channels...)
 	for i := range channels {
 		channels[i].EnsureKey()
+		PreclassifyChannel(&channels[i])
 		if g := PreclassifyMulticastGroup(channels[i].URL); g != "" && g != "待识别" {
 			if channels[i].Group == "" || channels[i].Group == "待识别" || channels[i].Group == "未分组" || (g == "4K" && channels[i].Group != "4K") || (g == "央视" && channels[i].Group == "高清") {
 				channels[i].Group = g

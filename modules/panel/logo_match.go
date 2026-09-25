@@ -33,6 +33,16 @@ func (s *Service) MatchLogoRegion(ctx context.Context, name, group, region strin
 	if name == "" || len(name) > 200 || len(group) > 200 || strings.ContainsAny(name+group, "\r\n") {
 		return nil, errors.New("请填写有效的频道名称和分组")
 	}
+	if s.LogosDir != "" {
+		if local := s.FindLocalLogo(name); local != "" {
+			return &LogoMatch{
+				Name:       name,
+				Logo:       local,
+				Confidence: 1.0,
+				Reason:     "本地预设台标匹配",
+			}, nil
+		}
+	}
 	select {
 	case s.identify <- struct{}{}:
 		defer func() { <-s.identify }()

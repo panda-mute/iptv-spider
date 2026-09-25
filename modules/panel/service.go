@@ -97,9 +97,14 @@ func (s *Service) Channels() ([]Channel, error) {
 		if c.Source != "iptv" && c.OriginalID != "" {
 			c.OriginalID = ""
 		}
-		if c.Logo == "" {
-			c.Logo = configuredLogo(settings.Logos, c.Name, c.LogoRegion)
-			c.LogoAutomatic = c.Logo != ""
+		if c.Logo == "" || c.LogoAutomatic {
+			if local := s.FindLocalLogo(c.Name); local != "" {
+				c.Logo = local
+				c.LogoAutomatic = true
+			} else if c.Logo == "" {
+				c.Logo = configuredLogo(settings.Logos, c.Name, c.LogoRegion)
+				c.LogoAutomatic = c.Logo != ""
+			}
 		}
 		c.PlayURL = PlaybackURL(settings.Forward, c.URL)
 		if settings.Forward.PlayMode == "unicast" && c.UnicastURL != "" {
