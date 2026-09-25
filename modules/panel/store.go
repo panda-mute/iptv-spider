@@ -1,7 +1,6 @@
 package panel
 
 import (
-	"sort"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -181,6 +181,11 @@ func OpenStore(path string, defaults Settings) (*Store, error) {
 		if s.data.Mappings == nil {
 			s.data.Mappings = map[string]ChannelMapping{}
 		}
+		for k, ch := range s.data.Channels {
+			if PreclassifyChannel(&ch) {
+				s.data.Channels[k] = ch
+			}
+		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
@@ -348,6 +353,11 @@ func (s *Store) Import(channels []Channel) error {
 	channels = append([]Channel(nil), channels...)
 	for i := range channels {
 		channels[i].EnsureKey()
+		if g := PreclassifyMulticastGroup(channels[i].URL); g != "" && g != "待识别" {
+			if channels[i].Group == "" || channels[i].Group == "待识别" || channels[i].Group == "未分组" || (g == "4K" && channels[i].Group != "4K") || (g == "央视" && channels[i].Group == "高清") {
+				channels[i].Group = g
+			}
+		}
 		if err := channels[i].Validate(); err != nil {
 			return fmt.Errorf("频道 %s: %w", channels[i].ID, err)
 		}
@@ -381,6 +391,7 @@ func (s *Store) Discover(c Channel) error {
 				return nil
 			}
 		}
+		PreclassifyChannel(&c)
 		c.EnsureKey()
 		if _, ok := d.Channels[c.Key]; !ok {
 			d.Channels[c.Key] = c

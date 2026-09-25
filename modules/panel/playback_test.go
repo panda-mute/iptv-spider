@@ -230,4 +230,3 @@ func TestTiviMateAndTelevizoCatchupFormats(t *testing.T) {
 		t.Fatalf("channel name lookup failed: %d", w.Code)
 	}
 }
-

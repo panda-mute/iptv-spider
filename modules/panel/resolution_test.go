@@ -65,7 +65,6 @@ Input #0, mpegts, from 'http://192.168.1.1:4022/rtp/239.1.1.1:5140':
 		t.Errorf("ExtractResolutionFromFFmpegStderr 4K real got %q, want 3840x2160", res4KReal)
 	}
 
-
 	noVideo := `Stream #0:0: Audio: aac, 44100 Hz, stereo`
 	if resEmpty := ExtractResolutionFromFFmpegStderr(noVideo); resEmpty != "" {
 		t.Errorf("ExtractResolutionFromFFmpegStderr no video got %q, want empty", resEmpty)

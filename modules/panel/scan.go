@@ -129,16 +129,18 @@ func (s *Service) runScan(ctx context.Context, settings Settings, known map[stri
 				var saveErr error
 				if err == nil {
 					if !known[target] {
-						saveErr = s.Store.Discover(Channel{
+						ch := Channel{
 							Key:        "scan-" + target,
 							ID:         InvalidChannelID,
-							Name:       "未知频道 " + target,
+							Name:       "未知频道",
 							Group:      "待识别",
 							URL:        source,
 							Enabled:    true,
 							Source:     "scan",
 							Resolution: res,
-						})
+						}
+						PreclassifyChannel(&ch)
+						saveErr = s.Store.Discover(ch)
 					} else if res != "" {
 						_ = s.Store.UpdateResolution("scan-"+target, res)
 					}

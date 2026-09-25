@@ -287,7 +287,6 @@ func (s *Service) MatchChannel(query string) *Channel {
 	}
 }
 
-
 func (s *Service) StartProbe(ctx context.Context, onlyMissing bool) error {
 	s.probeMu.Lock()
 	if s.probe.State == "running" {

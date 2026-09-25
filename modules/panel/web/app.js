@@ -265,7 +265,7 @@ function fillSettings(result) {
   if (settings.logos) {
     currentLogoSources = settings.logos.sources || (settings.logos.primary ? [settings.logos.primary] : ["https://github.com/sggc/SDU-IPTV-PRO/tree/main/logo"]);
   }
-  currentGroupOrder = settings.group_order || ["央视频道", "卫视频道", "上海频道", "数字频道", "其它", "待识别"];
+  currentGroupOrder = settings.group_order || ["4K", "央视", "卫视", "高清", "本地", "少儿", "标清", "其它", "待识别"];
   currentGroupChannelOrders = settings.group_channel_order || {};
   if (typeof renderGroupOrderList === "function") renderGroupOrderList();
   if (typeof renderLogoSourcesList === "function") renderLogoSourcesList();
@@ -2103,7 +2103,7 @@ if ($('add-mapping-form')) {
 }
 
 
-let currentGroupOrder = ['央视频道', '卫视频道', '上海频道', '数字频道', '其它', '待识别'];
+let currentGroupOrder = ['4K', '央视', '卫视', '高清', '本地', '少儿', '标清', '其它', '待识别'];
 
 function renderGroupOrderList() {
   const container = $('group-order-list');
@@ -2112,7 +2112,7 @@ function renderGroupOrderList() {
   container.innerHTML = '';
 
   if (!currentGroupOrder || currentGroupOrder.length === 0) {
-    currentGroupOrder = ['央视频道', '卫视频道', '上海频道', '数字频道', '其它', '待识别'];
+    currentGroupOrder = ['4K', '央视', '卫视', '高清', '本地', '少儿', '标清', '其它', '待识别'];
   }
 
   currentGroupOrder.forEach((groupName, idx) => {
@@ -2239,7 +2239,7 @@ if ($('save-group-order-btn')) {
 
 if ($('reset-group-order-btn')) {
   $('reset-group-order-btn').onclick = () => {
-    currentGroupOrder = ['央视频道', '卫视频道', '上海频道', '数字频道', '其它', '待识别'];
+    currentGroupOrder = ['4K', '央视', '卫视', '高清', '本地', '少儿', '标清', '其它', '待识别'];
     renderGroupOrderList();
     toast('已恢复默认分组排序，请点击「保存分组排序」确认保存');
   };

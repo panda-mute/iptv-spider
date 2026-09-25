@@ -58,9 +58,9 @@ type Settings struct {
 
 func DefaultSettings() Settings {
 	return Settings{
-		Logos:   defaultLogoSources(),
-		EPG:     EPGConfig{Enabled: true, IntervalHours: 6, PastDays: 7, FutureDays: 3},
-		IPTV:    IPTV{Type: "B860A", AuthHost: "222.68.208.73:7001"},
+		Logos: defaultLogoSources(),
+		EPG:   EPGConfig{Enabled: true, IntervalHours: 6, PastDays: 7, FutureDays: 3},
+		IPTV:  IPTV{Type: "B860A", AuthHost: "222.68.208.73:7001"},
 		Forward: Forward{
 			Address:         "192.168.190.1:4022",
 			Protocol:        "rtp",
@@ -68,7 +68,7 @@ func DefaultSettings() Settings {
 			FCCList:         DefaultFCCList(),
 			CatchupTemplate: DefaultCatchupTemplate,
 		},
-		Scan:    ScanConfig{StartIP: "239.45.0.1", EndIP: "239.45.0.10", StartPort: 5140, EndPort: 5140, Workers: 4, Timeout: 5},
+		Scan:              ScanConfig{StartIP: "239.45.0.1", EndIP: "239.45.0.10", StartPort: 5140, EndPort: 5140, Workers: 4, Timeout: 5},
 		AI:                AIConfig{BaseURL: "https://api.openai.com/v1"},
 		GroupOrder:        DefaultGroupOrder(),
 		GroupChannelOrder: map[string][]string{},
@@ -76,14 +76,7 @@ func DefaultSettings() Settings {
 }
 
 func DefaultGroupOrder() []string {
-	return []string{
-		"央视频道",
-		"卫视频道",
-		"上海频道",
-		"数字频道",
-		"其它",
-		"待识别",
-	}
+	return DefaultPreGroups()
 }
 
 func DefaultFCCList() []string {

@@ -96,6 +96,29 @@ func TestCCTVNumericSorting(t *testing.T) {
 func TestGroupSortingDefault(t *testing.T) {
 	channels := []Channel{
 		{Name: "未知频道 1", Group: "待识别", URL: "rtp://239.1.1.1:5140"},
+		{Name: "东方卫视", Group: "卫视", URL: "rtp://239.1.1.2:5140"},
+		{Name: "上海新闻综合", Group: "本地", URL: "rtp://239.1.1.3:5140"},
+		{Name: "CCTV-1", Group: "央视", URL: "rtp://239.1.1.4:5140"},
+		{Name: "CHC家庭影院", Group: "高清", URL: "rtp://239.1.1.5:5140"},
+		{Name: "CCTV-4K", Group: "4K", URL: "rtp://239.1.1.6:5140"},
+		{Name: "卡酷少儿", Group: "少儿", URL: "rtp://239.1.1.7:5140"},
+		{Name: "法治天地", Group: "标清", URL: "rtp://239.1.1.8:5140"},
+		{Name: "测试频道", Group: "其它", URL: "rtp://239.1.1.9:5140"},
+	}
+
+	SortChannels(channels, DefaultGroupOrder())
+
+	expectedGroups := []string{"4K", "央视", "卫视", "高清", "本地", "少儿", "标清", "其它", "待识别"}
+	for i, c := range channels {
+		if c.Group != expectedGroups[i] {
+			t.Errorf("expected index %d group %q, got %q (channel %s)", i, expectedGroups[i], c.Group, c.Name)
+		}
+	}
+}
+
+func TestGroupSortingLegacy(t *testing.T) {
+	channels := []Channel{
+		{Name: "未知频道 1", Group: "待识别", URL: "rtp://239.1.1.1:5140"},
 		{Name: "东方卫视", Group: "卫视频道", URL: "rtp://239.1.1.2:5140"},
 		{Name: "上海新闻综合", Group: "上海频道", URL: "rtp://239.1.1.3:5140"},
 		{Name: "CCTV-1", Group: "央视频道", URL: "rtp://239.1.1.4:5140"},
@@ -103,7 +126,8 @@ func TestGroupSortingDefault(t *testing.T) {
 		{Name: "测试频道", Group: "其它", URL: "rtp://239.1.1.6:5140"},
 	}
 
-	SortChannels(channels, DefaultGroupOrder())
+	legacyOrder := []string{"央视频道", "卫视频道", "上海频道", "数字频道", "其它", "待识别"}
+	SortChannels(channels, legacyOrder)
 
 	expectedGroups := []string{"央视频道", "卫视频道", "上海频道", "数字频道", "其它", "待识别"}
 	for i, c := range channels {

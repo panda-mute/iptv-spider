@@ -1,9 +1,9 @@
 package panel
 
 import (
-	"net/url"
 	"context"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )

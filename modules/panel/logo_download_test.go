@@ -111,7 +111,6 @@ func TestFCCListStoreAndSettings(t *testing.T) {
 	}
 }
 
-
 func TestSaveUploadedLogo(t *testing.T) {
 	dir := t.TempDir()
 	store, err := OpenStore(filepath.Join(dir, "panel.json"), DefaultSettings())

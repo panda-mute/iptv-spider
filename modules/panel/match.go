@@ -137,13 +137,13 @@ func min3(a, b, c int) int {
 }
 
 type ChannelMatchCandidate struct {
-	ID         string 
-	Name       string 
-	OperatorID string 
-	Group      string 
-	Score      int    
-	IsSaved    bool   
-	Source     string 
+	ID         string
+	Name       string
+	OperatorID string
+	Group      string
+	Score      int
+	IsSaved    bool
+	Source     string
 }
 
 func stripProvincePrefix(s string) string {

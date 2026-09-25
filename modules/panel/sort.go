@@ -10,11 +10,11 @@ import (
 )
 
 var (
-	cctvNumericRegex = regexp.MustCompile(`(?i)CCTV[-_\s]*([48]K|\d+)(?:\+?|\s*plus)?`)
+	cctvNumericRegex   = regexp.MustCompile(`(?i)CCTV[-_\s]*([48]K|\d+)(?:\+?|\s*plus)?`)
 	cctvDedicatedRegex = regexp.MustCompile(`(?i)CCTV[-_\s]*([48]K)`)
-	cctv5PlusRegex   = regexp.MustCompile(`(?i)CCTV[-_\s]*5\s*(?:\+|plus)`)
-	centralNumRegex  = regexp.MustCompile(`中央(?:电视台)?[-_\s]*(\d+)`)
-	centralZhRegex   = regexp.MustCompile(`中央(?:电视台)?[-_\s]*([一二三四五六七八九十]+)`)
+	cctv5PlusRegex     = regexp.MustCompile(`(?i)CCTV[-_\s]*5\s*(?:\+|plus)`)
+	centralNumRegex    = regexp.MustCompile(`中央(?:电视台)?[-_\s]*(\d+)`)
+	centralZhRegex     = regexp.MustCompile(`中央(?:电视台)?[-_\s]*([一二三四五六七八九十]+)`)
 )
 
 var cctvAliasRanks = map[string]float64{
@@ -26,7 +26,7 @@ var cctvAliasRanks = map[string]float64{
 	"体育赛事": 5.5,
 	"电影":   6.0,
 	"国防军事": 7.0,
-	"电视剧": 8.0,
+	"电视剧":  8.0,
 	"纪录":   9.0,
 	"科教":   10.0,
 	"戏曲":   11.0,
@@ -215,9 +215,13 @@ func GroupRank(group string, customOrder []string) int {
 			return i * 10
 		}
 		// Fuzzy match custom group names (e.g. 央视 vs 央视频道)
-		if (strings.Contains(cTrim, "央视") && strings.Contains(norm, "央视")) ||
+		if (strings.EqualFold(cTrim, "4k") && strings.Contains(strings.ToLower(norm), "4k")) ||
+			(strings.Contains(cTrim, "央视") && strings.Contains(norm, "央视")) ||
 			(strings.Contains(cTrim, "卫视") && strings.Contains(norm, "卫视")) ||
-			(strings.Contains(cTrim, "上海") && strings.Contains(norm, "上海")) ||
+			(strings.Contains(cTrim, "高清") && (strings.Contains(norm, "高清") || strings.Contains(norm, "数字"))) ||
+			((strings.Contains(cTrim, "上海") || strings.Contains(cTrim, "本地")) && (strings.Contains(norm, "上海") || strings.Contains(norm, "本地"))) ||
+			(strings.Contains(cTrim, "少儿") && strings.Contains(norm, "少儿")) ||
+			(strings.Contains(cTrim, "标清") && strings.Contains(norm, "标清")) ||
 			(strings.Contains(cTrim, "数字") && strings.Contains(norm, "数字")) ||
 			((cTrim == "其它" || cTrim == "其他") && (norm == "其它" || norm == "其他")) {
 			return i * 10
@@ -226,10 +230,14 @@ func GroupRank(group string, customOrder []string) int {
 
 	lower := strings.ToLower(norm)
 	switch {
+	case strings.Contains(lower, "4k") || strings.Contains(lower, "8k") || strings.Contains(lower, "超高清"):
+		return 50
 	case strings.Contains(lower, "央视") || strings.Contains(lower, "cctv") || strings.Contains(lower, "中央"):
 		return 100
 	case strings.Contains(lower, "卫视"):
 		return 200
+	case strings.Contains(lower, "高清"):
+		return 250
 	case strings.Contains(lower, "上海") || strings.Contains(lower, "本地") || strings.Contains(lower, "地方"):
 		return 300
 	case strings.Contains(lower, "影视") || strings.Contains(lower, "电影") || strings.Contains(lower, "电视剧") || strings.Contains(lower, "剧场"):
@@ -248,6 +256,8 @@ func GroupRank(group string, customOrder []string) int {
 		return 1000
 	case strings.Contains(lower, "国际") || strings.Contains(lower, "港澳台"):
 		return 1100
+	case strings.Contains(lower, "标清"):
+		return 7000
 	case strings.Contains(lower, "其它") || strings.Contains(lower, "其他") || strings.Contains(lower, "购物") || strings.Contains(lower, "测试"):
 		return 8000
 	default:

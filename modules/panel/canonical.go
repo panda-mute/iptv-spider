@@ -16,9 +16,10 @@ var (
 
 // CanonicalName normalizes channel names across transmission formats, resolutions, and quality tags.
 // For example:
-//   "cctv1", "CCTV1", "CCTV-1HD", "CCTV1高清" -> "CCTV-1"
-//   "湖南卫视", "湖南卫视HD", "湖南卫视高清", "湖南卫视4K" -> "湖南卫视"
-//   "CCTV-4K" -> "CCTV-4K" (dedicated 4K channel preserved)
+//
+//	"cctv1", "CCTV1", "CCTV-1HD", "CCTV1高清" -> "CCTV-1"
+//	"湖南卫视", "湖南卫视HD", "湖南卫视高清", "湖南卫视4K" -> "湖南卫视"
+//	"CCTV-4K" -> "CCTV-4K" (dedicated 4K channel preserved)
 func CanonicalName(name string) string {
 	s := strings.TrimSpace(name)
 	if s == "" {
