@@ -29,7 +29,7 @@ func TestPanelRoutesAndLegacyExports(t *testing.T) {
 		contains            string
 	}{
 		{"GET", "/", "", 200, "IPTV WORKSPACE"}, {"GET", "/app.js", "", 200, "loadChannels"}, {"GET", "/style.css", "", 200, "font-family"},
-		{"GET", "/player", "", 200, "IPTV 网页播放器"}, {"GET", "/player.html", "", 200, "IPTV 网页播放器"}, {"GET", "/assets/player-D-vVEnZr.js", "", 200, "rtp2httpd"}, {"GET", "/playlist.m3u", "", 200, "#EXTM3U"},
+		{"GET", "/player", "", 200, "IPTV 网页播放器"}, {"GET", "/player.html", "", 200, "IPTV 网页播放器"}, {"GET", "/player.js", "", 200, "playStream"}, {"GET", "/playlist.m3u", "", 200, "#EXTM3U"},
 		{"GET", "/api/panel/settings", "", 401, "令牌"}, {"GET", "/api/panel/settings", "test-token", 200, `"address":"192.168.190.1:4022"`},
 		{"GET", "/api/m3u8", "", 200, "#EXTM3U"}, {"GET", "/api/playlist?fmt=json", "", 200, "[]"}, {"GET", "/api/run?task=update-chi", "", 410, "POST"},
 		{"GET", "/api/epg", "", 503, "尚未同步"}, {"GET", "/api/tsM3u8", "", 200, "#EXTM3U"},

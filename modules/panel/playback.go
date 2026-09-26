@@ -3,6 +3,8 @@ package panel
 import (
 	"context"
 	"errors"
+	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -228,6 +230,10 @@ func (s *Service) ServePlay(w http.ResponseWriter, r *http.Request) {
 			failure(w, 404, errors.New("该频道没有组播播放地址"))
 			return
 		}
+		if q.Get("proxy") == "1" || strings.EqualFold(q.Get("proxy"), "true") {
+			s.proxyStream(w, r, target)
+			return
+		}
 		http.Redirect(w, r, target, http.StatusFound)
 		return
 	}
@@ -279,6 +285,10 @@ func (s *Service) ServePlay(w http.ResponseWriter, r *http.Request) {
 	}
 	if !unicastURL(target) {
 		failure(w, 502, errors.New("无效的播放地址"))
+		return
+	}
+	if q.Get("proxy") == "1" || strings.EqualFold(q.Get("proxy"), "true") {
+		s.proxyStream(w, r, target)
 		return
 	}
 	http.Redirect(w, r, target, http.StatusFound)
@@ -354,4 +364,86 @@ func (s *Service) playlistPlayback(channels []Channel, mode, base string) ([]Cha
 		list = append(list, c)
 	}
 	return list, nil
+}
+
+
+func (s *Service) proxyStream(w http.ResponseWriter, r *http.Request, targetURL string) {
+	u, err := url.Parse(targetURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		failure(w, 400, errors.New("仅支持 http/https 流媒体代理地址"))
+		return
+	}
+	req, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, nil)
+	if err != nil {
+		failure(w, 500, err)
+		return
+	}
+	req.Header.Set("User-Agent", "IPTV-Player/1.0")
+	if r.Header.Get("Range") != "" {
+		req.Header.Set("Range", r.Header.Get("Range"))
+	}
+	client := s.StreamClient
+	if client == nil {
+		client = &http.Client{
+			Timeout: 0,
+			Transport: &http.Transport{
+				Proxy: http.ProxyFromEnvironment,
+				DialContext: (&net.Dialer{
+					Timeout:   10 * time.Second,
+					KeepAlive: 30 * time.Second,
+				}).DialContext,
+				ForceAttemptHTTP2:     false,
+				MaxIdleConns:          100,
+				IdleConnTimeout:       90 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+				ResponseHeaderTimeout: 15 * time.Second,
+			},
+		}
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		failure(w, 502, errors.New("连接上游流媒体失败: "+err.Error()))
+		return
+	}
+	defer resp.Body.Close()
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+	w.Header().Set("Cache-Control", "no-cache, no-store")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" || contentType == "application/octet-stream" {
+		if strings.Contains(targetURL, ".m3u8") {
+			contentType = "application/vnd.apple.mpegurl"
+		} else {
+			contentType = "video/mp2t"
+		}
+	}
+	w.Header().Set("Content-Type", contentType)
+	if cl := resp.Header.Get("Content-Length"); cl != "" {
+		w.Header().Set("Content-Length", cl)
+	}
+	w.WriteHeader(resp.StatusCode)
+	buf := make([]byte, 32*1024)
+	_, _ = io.CopyBuffer(w, resp.Body, buf)
+}
+
+func (s *Service) ServeStreamProxy(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	targetURL := strings.TrimSpace(r.URL.Query().Get("url"))
+	if targetURL == "" {
+		failure(w, 400, errors.New("缺少 url 参数"))
+		return
+	}
+	s.proxyStream(w, r, targetURL)
 }

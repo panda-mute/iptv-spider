@@ -88,6 +88,8 @@ func (s *Service) Handler(token string) http.Handler {
 	mux.HandleFunc("HEAD /api/play.m3u8", s.ServePlay)
 	mux.HandleFunc("GET /api/play/live.m3u8", s.ServePlay)
 	mux.HandleFunc("HEAD /api/play/live.m3u8", s.ServePlay)
+	mux.HandleFunc("GET /api/stream/proxy", s.ServeStreamProxy)
+	mux.HandleFunc("OPTIONS /api/stream/proxy", s.ServeStreamProxy)
 	mux.Handle("/", http.FileServer(http.FS(assets)))
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/panel/logos/status", func(w http.ResponseWriter, r *http.Request) { jsonResponse(w, 200, s.LogoSourcesStatus()) })

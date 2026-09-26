@@ -317,7 +317,7 @@ nav {
   margin-top: 18px;
   flex: 1;
 }
-nav button {
+nav button, nav a.nav-link {
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -335,8 +335,10 @@ nav button {
   transform: none;
   transition: all var(--transition-fast);
   position: relative;
+  text-decoration: none;
+  cursor: pointer;
 }
-nav button:hover {
+nav button:hover, nav a.nav-link:hover {
   background: var(--sidebar-hover);
   color: var(--text-main);
   box-shadow: none;

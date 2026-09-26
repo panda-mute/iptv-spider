@@ -27,6 +27,8 @@ func InitApiRouters(rg iris.Party) {
 		rg.Get("/play/live.m3u8", iris.FromStd(http.HandlerFunc(panel.Current.ServePlay)))
 		rg.Head("/play/live.m3u8", iris.FromStd(http.HandlerFunc(panel.Current.ServePlay)))
 		rg.Get("/epg/programmes", iris.FromStd(http.HandlerFunc(panel.Current.ServeEPGPrograms)))
+		rg.Get("/stream/proxy", iris.FromStd(http.HandlerFunc(panel.Current.ServeStreamProxy)))
+		rg.Options("/stream/proxy", iris.FromStd(http.HandlerFunc(panel.Current.ServeStreamProxy)))
 	}
 
 	rg.Get("/m3u8", generateM3u8)

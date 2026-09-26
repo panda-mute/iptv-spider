@@ -2,6 +2,7 @@ package panel
 
 import (
 	"context"
+	"net/http"
 	"errors"
 	"fmt"
 	"strconv"
@@ -21,6 +22,7 @@ type Job struct {
 
 type Service struct {
 	Store       *Store
+	StreamClient *http.Client
 	Load        func() ([]Channel, error)
 	Fetch       func(Settings, bool) error
 	ResolveHTTP func(context.Context, Settings, string, time.Time, time.Time) (string, error)
