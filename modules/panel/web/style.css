@@ -149,6 +149,21 @@ a:hover {
   display: none !important;
 }
 
+/* Hidden native file inputs (kept focusable/clickable via label or JS .click()) */
+.visually-hidden-input {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+  opacity: 0 !important;
+}
+
 /* ==========================================================================
    Buttons
    ========================================================================== */
@@ -743,7 +758,7 @@ progress::-moz-progress-bar {
 table {
   border-collapse: collapse;
   width: 100%;
-  min-width: 960px;
+  min-width: 880px;
   text-align: left;
 }
 thead th {
@@ -768,6 +783,21 @@ tbody tr:last-child td {
 }
 tbody tr:hover td {
   background: #f8fafc;
+}
+
+/* Subtle zebra striping on enabled rows improves row tracking in long lists.
+   Disabled rows keep their status background and are not striped. */
+.channel-table tbody tr.channel-row-enabled:nth-child(even) td {
+  background: #fbfcfd;
+}
+.channel-table tbody tr.channel-row-enabled:nth-child(even) td:first-child {
+  background: #fbfcfd;
+}
+.channel-table tbody tr:hover td {
+  background: #f4f7fa;
+}
+.channel-table tbody tr:hover td:first-child {
+  background: #f4f7fa;
 }
 tbody td:nth-child(3) {
   max-width: 260px;
@@ -805,8 +835,8 @@ td button {
 .channel-table th.col-name,
 .channel-table td.col-name {
   text-align: left;
-  width: 195px;
-  min-width: 195px;
+  width: 150px;
+  min-width: 150px;
 }
 
 /* 频道号居中 */
@@ -834,7 +864,7 @@ td button {
 .channel-table th.col-res,
 .channel-table td.col-res {
   text-align: center;
-  width: 96px;
+  width: 88px;
 }
 
 /* 分组居中 */
@@ -876,15 +906,44 @@ td button {
   background: #f8fafc;
 }
 
-/* Segmented Channel Table Styles */
+/* Segmented Channel Table Styles: disabled rows use soft muted colors instead of
+   per-cell opacity (opacity on tds creates stacking layers that look like frosted
+   glass overlapping the row contents) */
 .channel-row-disabled td {
-  background: #fafafa;
+  background: #fafbfc;
 }
-.channel-row-disabled td:not(.col-status) {
-  opacity: 0.65;
+.channel-row-disabled .channel-name-text {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.channel-row-disabled .channel-url-mono {
+  color: var(--text-light);
+  background: #f8fafc;
+  border-color: var(--line-subtle);
+}
+.channel-row-disabled .badge,
+.channel-row-disabled .badge-res {
+  opacity: 0.75;
+}
+.channel-row-disabled .badge-channel-id {
+  background: #f8fafc;
+  color: var(--text-light);
+  border-color: var(--line);
+  box-shadow: none;
+  font-weight: 500;
+}
+.channel-row-disabled .channel-logo-box {
+  opacity: 0.55;
+  filter: grayscale(0.5);
+}
+.channel-row-disabled .action-icon-btn {
+  opacity: 0.75;
+}
+.channel-row-disabled .action-icon-btn:hover {
+  opacity: 1;
 }
 .channel-row-disabled td:first-child {
-  background: #fafafa;
+  background: #fafbfc;
 }
 .channel-row-disabled:hover td:first-child {
   background: #f1f5f9;
@@ -966,14 +1025,23 @@ td button {
   font-size: 14px;
   line-height: 1.3;
   letter-spacing: -0.2px;
-  min-width: 135px;
-  max-width: 220px;
+  min-width: 0;
+  max-width: 150px;
   flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   display: inline-block;
   vertical-align: middle;
+}
+
+/* Second-row tags under channel name (本地 / 建议), keeps first row aligned */
+.channel-name-tags {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  min-height: 18px;
 }
 
 /* Digital Channel ID badge (Col 2): 底色阴影突出数字ID, 无#, 可点击输入 */
@@ -1089,7 +1157,7 @@ td button {
 }
 .channel-logo-box.has-logo-upload:hover {
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18);
+  box-shadow: 0 0 0 2px var(--primary-glow);
   transform: translateY(-1px);
 }
 .channel-logo-box.has-logo-upload:hover::after {
@@ -1896,9 +1964,9 @@ footer {
 }
 .logo-preview.is-dragover {
   border-color: var(--primary);
-  background: #eff6ff;
+  background: var(--primary-light);
   border-style: solid;
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+  box-shadow: 0 0 0 2px var(--primary-glow);
 }
 .logo-preview img {
   width: 68px;
@@ -2429,6 +2497,7 @@ footer {
     width: 270px;
     max-width: 82vw;
     height: 100vh;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
     box-shadow: var(--shadow-xl);
     transform: translateX(-100%);
     z-index: 100;
@@ -2442,9 +2511,17 @@ footer {
 
   main {
     margin-left: 0;
-    padding: 16px 14px 40px 14px;
+    padding: 16px 14px calc(40px + env(safe-area-inset-bottom)) 14px;
     width: 100%;
     max-width: 100vw;
+  }
+
+  .table-wrap {
+    border-left: none;
+    border-right: none;
+    border-radius: 0;
+    margin-left: -14px;
+    margin-right: -14px;
   }
 
   header {
@@ -2666,14 +2743,14 @@ footer {
 @media (max-width: 640px) {
   .channel-table th.col-name,
   .channel-table td.col-name {
-    width: 165px;
-    min-width: 165px;
+    width: 136px;
+    min-width: 136px;
   }
   .channel-name-text {
-    width: 110px;
-    min-width: 110px;
-    max-width: 110px;
-    flex: 0 0 110px;
+    width: 92px;
+    min-width: 92px;
+    max-width: 92px;
+    flex: 0 0 92px;
   }
 }
 
@@ -2683,7 +2760,7 @@ footer {
    ========================================================================== */
 @media (min-width: 1400px) {
   .channel-name-text {
-    max-width: 320px;
+    max-width: 260px;
   }
   .channel-url-mono {
     max-width: 420px;
@@ -2695,7 +2772,7 @@ footer {
     padding: 32px 48px;
   }
   .channel-name-text {
-    max-width: 460px;
+    max-width: 380px;
   }
   .channel-url-mono {
     max-width: 600px;

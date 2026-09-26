@@ -451,12 +451,15 @@ function renderChannels() {
     nameTitle.title = c.name;
     nameTop.append(nameTitle);
 
+    const nameTags = document.createElement('div');
+    nameTags.className = 'channel-name-tags';
+
     if (isLocal) {
       const localBadge = document.createElement('span');
       localBadge.className = 'badge-local';
       localBadge.textContent = '本地';
       localBadge.title = '本地台标';
-      nameTop.append(localBadge);
+      nameTags.append(localBadge);
     }
 
     if (c.suggestion) {
@@ -464,10 +467,11 @@ function renderChannels() {
       sugSpan.className = 'channel-sug-tag';
       sugSpan.textContent = '💡 建议';
       sugSpan.title = `识别建议: ${c.suggestion.name || ''} (${Math.round(c.suggestion.confidence * 100)}%)`;
-      nameTop.append(sugSpan);
+      nameTags.append(sugSpan);
     }
 
     nameWrapper.append(nameTop);
+    if (nameTags.childNodes.length) nameWrapper.append(nameTags);
     nameTd.append(nameWrapper);
 
     // 2. 频道号 (Digital ID) - 第二列，单独一列在名称后面，居中，点击直接输入
