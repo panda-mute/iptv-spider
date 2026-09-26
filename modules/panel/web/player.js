@@ -499,40 +499,76 @@
     showOSD(state.currentChannel, `画面比例: ${next.toUpperCase()}`);
   }
 
+  function getEPGDateStr(offsetDays = 0) {
+    const d = new Date(Date.now() + (offsetDays * 86400000));
+    const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+    const cst = new Date(utc + (3600000 * 8));
+    const y = cst.getFullYear();
+    const m = String(cst.getMonth() + 1).padStart(2, '0');
+    const day = String(cst.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
   // EPG Loading
-  async function loadChannelEPG(channel) {
+  async function loadChannelEPG(channel, dayOffset = state.epgDayOffset || 0) {
     if (!channel) return;
     const name = channel.name;
+    const id = channel.id || '';
     const logoSrc = channel.logo || `/logos/${encodeURIComponent(name)}.png`;
     $('epg-header-name').textContent = name;
     $('epg-header-logo').src = logoSrc;
     $('epg-program-list').innerHTML = '<div class="empty-hint">正在获取节目单...</div>';
 
+    const dateStr = getEPGDateStr(dayOffset);
+    const cacheKey = `${name}_${dateStr}`;
+
     try {
-      const res = await fetch(`/api/epg/programmes?channel=${encodeURIComponent(name)}`);
+      const url = `/api/epg/programmes?id=${encodeURIComponent(id)}&channel=${encodeURIComponent(name)}&date=${encodeURIComponent(dateStr)}`;
+      const res = await fetch(url);
       if (!res.ok) throw new Error('EPG not available');
       const data = await res.json();
-      state.epgData[name] = data;
-      renderEPGList(name);
+      const list = Array.isArray(data) ? data : (data.programmes || []);
+      state.epgData[cacheKey] = list;
+      renderEPGList(cacheKey);
+
+      // If viewing today and it matches playing channel, update live program in OSD
+      if (dayOffset === 0 && state.currentChannel && state.currentChannel.name === name && list.length > 0) {
+        const now = Math.floor(Date.now() / 1000);
+        const currentProg = list.find(p => {
+          const s = (p.start && p.start > 1e11) ? Math.floor(p.start / 1000) : (p.start || 0);
+          const e = (p.end && p.end > 1e11) ? Math.floor(p.end / 1000) : (p.end || 0);
+          return now >= s && now <= e;
+        });
+        if (currentProg) {
+          const s = (currentProg.start && currentProg.start > 1e11) ? Math.floor(currentProg.start / 1000) : (currentProg.start || 0);
+          const e = (currentProg.end && currentProg.end > 1e11) ? Math.floor(currentProg.end / 1000) : (currentProg.end || 0);
+          const timeStr = `${formatTime(new Date(s * 1000))} - ${formatTime(new Date(e * 1000))}`;
+          $('osd-program-title').textContent = currentProg.title;
+          $('osd-program-time').textContent = timeStr;
+          $('ctrl-current-title').textContent = `${name} · ${currentProg.title}`;
+        }
+      }
     } catch (err) {
       $('epg-program-list').innerHTML = '<div class="empty-hint">暂未收录该频道电子节目单</div>';
     }
   }
 
-  function renderEPGList(channelName) {
+  function renderEPGList(cacheKey) {
     const listEl = $('epg-program-list');
-    const programmes = state.epgData[channelName] || [];
-    if (programmes.length === 0) {
-      listEl.innerHTML = '<div class="empty-hint">今日暂无详细节目单</div>';
+    const programmes = state.epgData[cacheKey] || [];
+    if (!Array.isArray(programmes) || programmes.length === 0) {
+      listEl.innerHTML = '<div class="empty-hint">当日暂无详细节目单</div>';
       return;
     }
 
-    const now = new Date();
+    const now = Math.floor(Date.now() / 1000);
     listEl.innerHTML = programmes.map(p => {
-      const start = new Date(p.start);
-      const end = new Date(p.end);
-      const isCurrent = now >= start && now <= end;
-      const isPast = now > end;
+      const startSec = (p.start && p.start > 1e11) ? Math.floor(p.start / 1000) : (p.start || 0);
+      const endSec = (p.end && p.end > 1e11) ? Math.floor(p.end / 1000) : (p.end || 0);
+      const start = new Date(startSec * 1000);
+      const end = new Date(endSec * 1000);
+      const isCurrent = now >= startSec && now <= endSec;
+      const isPast = now > endSec;
       const timeStr = `${formatTime(start)} - ${formatTime(end)}`;
 
       return `
@@ -541,7 +577,7 @@
             <span>${timeStr}</span>
             ${isCurrent ? '<span style="color:#38bdf8;font-weight:700;">● 正在播出</span>' : ''}
             ${isPast && state.currentChannel && state.currentChannel.catchup_days > 0 ?
-              `<button class="btn-catchup" data-start="${p.start}" data-end="${p.end}">回看</button>` : ''}
+              `<button class="btn-catchup" data-start="${startSec}" data-end="${endSec}">回看</button>` : ''}
           </div>
           <div class="epg-title">${escapeHtml(p.title)}</div>
         </div>
@@ -676,6 +712,20 @@
     $('btn-close-channels').addEventListener('click', closeDrawers);
     $('btn-toggle-epg').addEventListener('click', toggleEPGDrawer);
     $('btn-close-epg').addEventListener('click', closeDrawers);
+
+    const dateTabs = $('epg-date-tabs');
+    if (dateTabs) {
+      dateTabs.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          dateTabs.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          state.epgDayOffset = parseInt(btn.dataset.day, 10) || 0;
+          if (state.currentChannel) {
+            loadChannelEPG(state.currentChannel, state.epgDayOffset);
+          }
+        });
+      });
+    }
 
     $('btn-open-stream-modal').addEventListener('click', () => {
       $('input-stream-url').value = state.currentStreamUrl || 'http://tvpanel.netioe.com/rtp/233.18.204.215:5140?fcc=124.75.26.151%3A15970';

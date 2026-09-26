@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"encoding/json"
 	"context"
 	"encoding/xml"
 	"errors"
@@ -180,5 +181,72 @@ func TestEPGProgrammeDescriptionPreservationAndXMLTV(t *testing.T) {
 	}
 	if !strings.Contains(xmlStr, `<desc lang="zh">深度解析财经动态</desc>`) {
 		t.Fatalf("XML missing p2 desc: %s", xmlStr)
+	}
+}
+
+func TestServeEPGProgramsMatching(t *testing.T) {
+	s := testService(t)
+	c := Channel{ID: "58", Name: "CCTV-8 高清", OperatorID: "op_cctv8", URL: "rtp://239.1.1.8:5140", Enabled: true}
+	s.Store.Import([]Channel{c})
+
+	now := time.Now().In(time.FixedZone("CST", 8*3600))
+	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	p := Programme{Title: "电视剧大剧场", Start: midnight.Add(10 * time.Hour).Unix(), End: midnight.Add(11 * time.Hour).Unix(), Desc: "热播大剧"}
+
+	cfg, _ := s.Store.Snapshot()
+	if err := s.saveEPG(map[string][]Programme{"op_cctv8": {p}}, cfg.EPG); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Query by exact alias/HD variant "?channel=CCTV-8HD"
+	w1 := httptest.NewRecorder()
+	s.ServeEPGPrograms(w1, httptest.NewRequest("GET", "/api/epg/programmes?channel=CCTV-8HD", nil))
+	if w1.Code != 200 {
+		t.Fatalf("expected 200 for CCTV-8HD, got %d: %s", w1.Code, w1.Body.String())
+	}
+	var res1 struct {
+		Programmes []Programme `json:"programmes"`
+		Date       string      `json:"date"`
+	}
+	if err := json.Unmarshal(w1.Body.Bytes(), &res1); err != nil || len(res1.Programmes) != 1 || res1.Programmes[0].Title != p.Title {
+		t.Fatalf("unexpected response: %+v, err: %v", res1, err)
+	}
+
+	// 2. Query by ID "?id=58"
+	w2 := httptest.NewRecorder()
+	s.ServeEPGPrograms(w2, httptest.NewRequest("GET", "/api/epg/programmes?id=58", nil))
+	if w2.Code != 200 {
+		t.Fatalf("expected 200 for id=58, got %d: %s", w2.Code, w2.Body.String())
+	}
+
+	// 3. Query without channel or id (returns 400)
+	w3 := httptest.NewRecorder()
+	s.ServeEPGPrograms(w3, httptest.NewRequest("GET", "/api/epg/programmes", nil))
+	if w3.Code != 400 {
+		t.Fatalf("expected 400 for missing param, got %d: %s", w3.Code, w3.Body.String())
+	}
+
+	// 4. Query with unknown channel (returns 404)
+	w4 := httptest.NewRecorder()
+	s.ServeEPGPrograms(w4, httptest.NewRequest("GET", "/api/epg/programmes?channel=UnknownCh", nil))
+	if w4.Code != 404 {
+		t.Fatalf("expected 404 for unknown channel, got %d: %s", w4.Code, w4.Body.String())
+	}
+
+	// 5. Query channel not in channel list, but directly in EPG data
+	pStandalone := Programme{Title: "特别节目", Start: midnight.Add(14 * time.Hour).Unix(), End: midnight.Add(15 * time.Hour).Unix()}
+	if err := s.saveEPG(map[string][]Programme{"CCTV-13": {pStandalone}}, cfg.EPG); err != nil {
+		t.Fatal(err)
+	}
+	w5 := httptest.NewRecorder()
+	s.ServeEPGPrograms(w5, httptest.NewRequest("GET", "/api/epg/programmes?channel=CCTV-13HD", nil))
+	if w5.Code != 200 {
+		t.Fatalf("expected 200 for standalone EPG channel, got %d: %s", w5.Code, w5.Body.String())
+	}
+	var res5 struct {
+		Programmes []Programme `json:"programmes"`
+	}
+	if err := json.Unmarshal(w5.Body.Bytes(), &res5); err != nil || len(res5.Programmes) != 1 || res5.Programmes[0].Title != "特别节目" {
+		t.Fatalf("unexpected res5: %+v, err: %v", res5, err)
 	}
 }
