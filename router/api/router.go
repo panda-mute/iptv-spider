@@ -18,17 +18,8 @@ func InitApiRouters(rg iris.Party) {
 	if panel.Current != nil {
 		rg.Get("/playlist", iris.FromStd(http.HandlerFunc(panel.Current.ServePlaylist)))
 		rg.Head("/playlist", iris.FromStd(http.HandlerFunc(panel.Current.ServePlaylist)))
-		rg.Get("/playlist.m3u", iris.FromStd(http.HandlerFunc(panel.Current.ServePlaylist)))
-		rg.Head("/playlist.m3u", iris.FromStd(http.HandlerFunc(panel.Current.ServePlaylist)))
 		rg.Get("/play", iris.FromStd(http.HandlerFunc(panel.Current.ServePlay)))
 		rg.Head("/play", iris.FromStd(http.HandlerFunc(panel.Current.ServePlay)))
-		rg.Get("/play.m3u8", iris.FromStd(http.HandlerFunc(panel.Current.ServePlay)))
-		rg.Head("/play.m3u8", iris.FromStd(http.HandlerFunc(panel.Current.ServePlay)))
-		rg.Get("/play/live.m3u8", iris.FromStd(http.HandlerFunc(panel.Current.ServePlay)))
-		rg.Head("/play/live.m3u8", iris.FromStd(http.HandlerFunc(panel.Current.ServePlay)))
-		rg.Get("/epg/programmes", iris.FromStd(http.HandlerFunc(panel.Current.ServeEPGPrograms)))
-		rg.Get("/stream/proxy", iris.FromStd(http.HandlerFunc(panel.Current.ServeStreamProxy)))
-		rg.Options("/stream/proxy", iris.FromStd(http.HandlerFunc(panel.Current.ServeStreamProxy)))
 	}
 
 	rg.Get("/m3u8", generateM3u8)

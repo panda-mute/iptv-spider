@@ -1136,17 +1136,6 @@ function updatePlayAddress() {
   $('play-open').hidden = Boolean(notice);
   if (!notice) $('play-open').href = address;
   else $('play-open').removeAttribute('href');
-  if ($('play-in-player')) {
-    $('play-in-player').hidden = Boolean(notice);
-    if (!notice) {
-      const playerUrl = new URL('/player', location.origin);
-      playerUrl.searchParams.set('id', playing.id);
-      playerUrl.searchParams.set('mode', mode);
-      $('play-in-player').href = playerUrl.href;
-    } else {
-      $('play-in-player').removeAttribute('href');
-    }
-  }
 }
 
 for (const id of ['play-mode', 'play-replay', 'play-start', 'play-end']) {

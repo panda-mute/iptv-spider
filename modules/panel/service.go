@@ -2,7 +2,6 @@ package panel
 
 import (
 	"context"
-	"net/http"
 	"errors"
 	"fmt"
 	"strconv"
@@ -22,7 +21,6 @@ type Job struct {
 
 type Service struct {
 	Store       *Store
-	StreamClient *http.Client
 	Load        func() ([]Channel, error)
 	Fetch       func(Settings, bool) error
 	ResolveHTTP func(context.Context, Settings, string, time.Time, time.Time) (string, error)
@@ -130,10 +128,6 @@ func (s *Service) Channels() ([]Channel, error) {
 }
 
 func (s *Service) Channel(ref string) (Channel, error) {
-	ref = strings.TrimSpace(ref)
-	if ref == "" {
-		return Channel{}, errors.New("频道不存在")
-	}
 	list, err := s.Channels()
 	if err != nil {
 		return Channel{}, err
@@ -156,24 +150,6 @@ func (s *Service) Channel(ref string) (Channel, error) {
 	for _, c := range list {
 		if c.Name == ref {
 			return c, nil
-		}
-	}
-	for _, c := range list {
-		if strings.EqualFold(c.ID, ref) {
-			return c, nil
-		}
-	}
-	for _, c := range list {
-		if strings.EqualFold(c.Name, ref) {
-			return c, nil
-		}
-	}
-	canRef := CanonicalName(ref)
-	if canRef != "" {
-		for _, c := range list {
-			if CanonicalName(c.Name) == canRef {
-				return c, nil
-			}
 		}
 	}
 	return Channel{}, errors.New("频道不存在")

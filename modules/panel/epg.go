@@ -242,26 +242,6 @@ func (s *Service) Programmes(c Channel, start, end int64) []Programme {
 	if len(list) == 0 && can != "" {
 		list = s.epgData.Channels[can]
 	}
-	if len(list) == 0 && c.Name != "" {
-		list = s.epgData.Channels[c.Name]
-	}
-	if len(list) == 0 && can != "" {
-		for k, v := range s.epgData.Channels {
-			if CanonicalName(k) == can || strings.EqualFold(k, c.Name) {
-				list = v
-				break
-			}
-		}
-	}
-	if len(list) == 0 && c.ID != "" {
-		canID := CanonicalName(c.ID)
-		for k, v := range s.epgData.Channels {
-			if strings.EqualFold(k, c.ID) || (canID != "" && CanonicalName(k) == canID) {
-				list = v
-				break
-			}
-		}
-	}
 	if len(list) == 0 && s.Store != nil && IsValidChannelID(c.ID) {
 		for _, imp := range s.Store.Imported() {
 			if (IsValidChannelID(imp.ID) && imp.ID == c.ID) || (c.OriginalID != "" && imp.ID == c.OriginalID) || (can != "" && CanonicalName(imp.Name) == can) {
@@ -291,36 +271,13 @@ func (s *Service) Programmes(c Channel, start, end int64) []Programme {
 var chinaTime = time.FixedZone("CST", 8*3600)
 
 func (s *Service) ServeEPGPrograms(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	ref := firstNonEmpty(q.Get("channel"), q.Get("id"), q.Get("name"), q.Get("channel_id"))
-	if ref == "" {
-		failure(w, 400, errors.New("缺少 channel 或 id 参数"))
+	c, err := s.Channel(r.URL.Query().Get("id"))
+	if err != nil {
+		failure(w, 404, err)
 		return
 	}
-	c, err := s.Channel(ref)
-	if err != nil {
-		can := CanonicalName(ref)
-		s.epgMu.RLock()
-		hasData := false
-		if len(s.epgData.Channels[ref]) > 0 || (can != "" && len(s.epgData.Channels[can]) > 0) {
-			hasData = true
-		} else {
-			for k, v := range s.epgData.Channels {
-				if len(v) > 0 && (strings.EqualFold(k, ref) || (can != "" && CanonicalName(k) == can)) {
-					hasData = true
-					break
-				}
-			}
-		}
-		s.epgMu.RUnlock()
-		if !hasData {
-			failure(w, 404, err)
-			return
-		}
-		c = Channel{ID: ref, Name: ref}
-	}
 	day := time.Now().In(chinaTime).Format("2006-01-02")
-	if v := q.Get("date"); v != "" {
+	if v := r.URL.Query().Get("date"); v != "" {
 		day = v
 	}
 	start, err := time.ParseInLocation("2006-01-02", day, chinaTime)

@@ -151,9 +151,6 @@ export IPTV_PANEL_TOKEN='请替换为强随机访问令牌'
 | 接口 | 方法 | 说明 |
 | :--- | :--- | :--- |
 | `/` | `GET` | 中文 Web 管理控制台 |
-| `/player` | `GET` | 内嵌专用 Web 网页播放器（全离线 MSE/HLS 播放、MPEG-TS 直播、时移与遥控交互） |
-| `/playlist.m3u` | `GET`, `HEAD` | 根路径标准 M3U 播放列表 |
-| `/epg.xml` | `GET`, `HEAD` | 根路径 XMLTV 电子节目单 |
 | `/api/playlist?mode=multicast` | `GET`, `HEAD` | 组播 M3U 播放列表（默认） |
 | `/api/playlist?mode=unicast` | `GET`, `HEAD` | RTSP 包装单播与 7 天时移回看 M3U |
 | `/api/playlist?mode=http` | `GET`, `HEAD` | 运营商官方 HTTP/HLS 直播与回看 M3U |
@@ -188,12 +185,3 @@ make test
 # 编译二进制程序
 make build
 ```
-
----
-
-## 参考与致谢
-
-本项目在架构设计与功能实现过程中，参考了以下优秀的开源项目，在此表示诚挚的感谢：
-
-- [denymz/sh-tel-iptv-spider](https://github.com/denymz/sh-tel-iptv-spider)：提供了上海电信 IPTV 频道抓取、EPG 生成与组播扫描的重要基础实现与思路。
-- [stackia/rtp2httpd](https://github.com/stackia/rtp2httpd)：提供了轻量高效的 RTP 组播转 HTTP、FCC 快速切台以及 Web 播放器设计参考。

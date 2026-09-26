@@ -2,8 +2,6 @@ package panel
 
 import (
 	"context"
-	"io"
-	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
@@ -70,12 +68,6 @@ func TestCatchupRedirectAndValidation(t *testing.T) {
 	zone := time.FixedZone("CST", 8*3600)
 	if w.Code != 302 || u.Query().Get("AuthInfo") != "a+b" || u.Query().Get("playseek") != start.In(zone).Format("20060102150405")+"-"+end.In(zone).Format("20060102150405") {
 		t.Fatal(w.Code, u)
-	}
-	// Test multicast mode redirect
-	wMulti := httptest.NewRecorder()
-	s.ServePlay(wMulti, httptest.NewRequest("GET", "/api/play?id=1&mode=multicast", nil))
-	if wMulti.Code != 302 || !strings.Contains(wMulti.Header().Get("Location"), "/rtp/239.1.1.1:5140") {
-		t.Fatalf("expected 302 to multicast target, got %d, %s", wMulti.Code, wMulti.Header().Get("Location"))
 	}
 	for _, bad := range []string{"&start=abc&end=4", "&start=1&end=2", "&start=" + strconv.FormatInt(end.Unix(), 10) + "&end=" + strconv.FormatInt(start.Unix(), 10)} {
 		w = httptest.NewRecorder()
@@ -236,96 +228,5 @@ func TestTiviMateAndTelevizoCatchupFormats(t *testing.T) {
 	s.ServePlay(w, req)
 	if w.Code != 302 {
 		t.Fatalf("channel name lookup failed: %d", w.Code)
-	}
-}
-
-type mockRoundTripper func(req *http.Request) (*http.Response, error)
-
-func (m mockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	return m(req)
-}
-
-func TestStreamProxyAndServePlayProxy(t *testing.T) {
-	upstreamContent := "dummy-mpegts-stream-content"
-	mockTarget := "http://upstream.test/stream.ts"
-
-	s := testService(t)
-	s.StreamClient = &http.Client{
-		Transport: mockRoundTripper(func(req *http.Request) (*http.Response, error) {
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Header: http.Header{
-					"Content-Type":   []string{"video/mp2t"},
-					"Content-Length": []string{strconv.Itoa(len(upstreamContent))},
-				},
-				Body: io.NopCloser(strings.NewReader(upstreamContent)),
-			}, nil
-		}),
-	}
-
-	c := Channel{
-		ID:      "99",
-		Name:    "ProxyTest",
-		Enabled: true,
-		URL: "rtp://239.1.1.99:5140",
-		PlayURL: mockTarget,
-	}
-	if err := s.Store.Import([]Channel{c}); err != nil {
-		t.Fatal(err)
-	}
-
-	// 1. OPTIONS preflight
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest("OPTIONS", "/api/stream/proxy", nil)
-	s.ServeStreamProxy(w, req)
-	if w.Code != http.StatusNoContent || w.Header().Get("Access-Control-Allow-Origin") != "*" {
-		t.Fatalf("OPTIONS preflight failed: code %d, origin %s", w.Code, w.Header().Get("Access-Control-Allow-Origin"))
-	}
-
-	// 2. Missing url parameter
-	w = httptest.NewRecorder()
-	req = httptest.NewRequest("GET", "/api/stream/proxy", nil)
-	s.ServeStreamProxy(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for missing url, got %d", w.Code)
-	}
-
-	// 3. Invalid scheme
-	w = httptest.NewRecorder()
-	req = httptest.NewRequest("GET", "/api/stream/proxy?url=ftp://example.com/live", nil)
-	s.ServeStreamProxy(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for invalid scheme, got %d", w.Code)
-	}
-
-	// 4. Successful proxying of upstream stream
-	w = httptest.NewRecorder()
-	req = httptest.NewRequest("GET", "/api/stream/proxy?url="+url.QueryEscape(mockTarget), nil)
-	s.ServeStreamProxy(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-	if w.Header().Get("Access-Control-Allow-Origin") != "*" {
-		t.Fatalf("missing CORS header: %v", w.Header())
-	}
-	if w.Header().Get("Content-Type") != "video/mp2t" {
-		t.Fatalf("expected video/mp2t, got %s", w.Header().Get("Content-Type"))
-	}
-	if w.Body.String() != upstreamContent {
-		t.Fatalf("expected body %q, got %q", upstreamContent, w.Body.String())
-	}
-
-	// 5. ServePlay with proxy=1
-	w = httptest.NewRecorder()
-	req = httptest.NewRequest("GET", "/api/play?id=99&mode=multicast&proxy=1", nil)
-	s.ServePlay(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 for proxy=1, got %d: %s", w.Code, w.Body.String())
-	}
-	if w.Header().Get("Access-Control-Allow-Origin") != "*" {
-		t.Fatalf("missing CORS header for proxy=1: %v", w.Header())
-	}
-	if w.Body.String() != upstreamContent {
-		t.Fatalf("expected proxy body %q, got %q", upstreamContent, w.Body.String())
 	}
 }
