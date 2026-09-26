@@ -645,7 +645,7 @@
 <!-- Dialogs -->
 <dialog id="play-dialog">
   <div class="section-head">
-    <h2 id="play-title">播放地址</h2>
+    <h2 id="play-title">频道播放</h2>
     <button type="button" class="secondary" data-close="play-dialog">关闭</button>
   </div>
   <div class="form-grid">
@@ -662,10 +662,23 @@
   </div>
   <p id="play-notice" style="color:var(--badge-amber); font-weight: 500;"></p>
   <code id="play-address"></code>
-  <div class="actions" style="margin-top: 16px;">
-    <a id="play-open" class="button" target="_blank" rel="noopener">打开播放地址</a>
+  <div class="play-actions-container" style="margin-top: 18px; display: flex; flex-direction: column; gap: 12px;">
+    <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">调用播放器播放</div>
+    <div class="actions" style="display: flex; gap: 8px; flex-wrap: wrap;">
+      <a id="play-android" class="button" style="background: #10b981; color: #fff;" title="调用 Android 系统已安装的播放器（MX Player、VLC、系统视频等）">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="vertical-align: -2px; margin-right: 4px;"><path d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.551 0 .9993.4482.9993.9993.0001.5511-.4483.9997-.9993.9997m-11.046 0c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.5511 0 .9993.4482.9993.9993 0 .5511-.4482.9997-.9993.9997m11.4045-6.02l1.9973-3.4592a.416.416 0 00-.1521-.5676.416.416 0 00-.5676.1521l-2.0223 3.503C15.5902 8.4116 13.8533 8.125 12 8.125c-1.8534 0-3.5903.2866-5.1368.8247L4.8409 5.4467a.4161.4161 0 00-.5677-.1521.4157.4157 0 00-.1521.5676l1.9973 3.4592C2.6889 11.1867.3432 14.6589 0 18.75h24c-.3432-4.0911-2.6889-7.5633-6.1185-9.4286"/></svg>Android 播放器
+      </a>
+      <a id="play-potplayer" class="button" target="_blank" rel="noopener" style="background: #2563eb; color: #fff;" title="调用 Windows PotPlayer 播放">PotPlayer</a>
+      <a id="play-vlc" class="button" target="_blank" rel="noopener" style="background: #ea580c; color: #fff;" title="调用 VLC 播放器播放">VLC</a>
+      <a id="play-iina" class="button secondary" target="_blank" rel="noopener" title="调用 macOS IINA 播放器播放">IINA</a>
+      <button id="play-download-m3u" type="button" class="button secondary" title="下载该频道的 M3U 播放清单，双击可被默认播放器打开">下载播放文件 (.m3u)</button>
+    </div>
+    <div class="actions" style="display: flex; gap: 8px; flex-wrap: wrap;">
+      <button id="play-copy" type="button" class="button secondary">复制流地址</button>
+      <a id="play-open" class="button secondary" target="_blank" rel="noopener">打开原始流地址</a>
+    </div>
   </div>
-  <p class="muted" style="margin-top: 14px;">可复制地址到支持 HLS / MPEG-TS 的播放器；回看时间使用本机时区。</p>
+  <p class="muted" style="margin-top: 14px;">支持 Android 系统 Intent / PotPlayer / VLC / IINA 一键唤起，或下载 M3U 清单由本地播放器播放；回看时间使用本机时区。</p>
 </dialog>
 
 <dialog id="channel-dialog">

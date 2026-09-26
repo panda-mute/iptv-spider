@@ -1133,13 +1133,94 @@ function updatePlayAddress() {
   }
   $('play-notice').textContent = notice || (replay ? '可回看 ' + playing.catchup_days + ' 天；HTTP 回看按运营商节目边界结束。' : '');
   $('play-address').textContent = notice ? '' : address;
-  $('play-open').hidden = Boolean(notice);
-  if (!notice) $('play-open').href = address;
-  else $('play-open').removeAttribute('href');
+  
+  const hasAddr = !notice && Boolean(address);
+  const playerButtons = ['play-android', 'play-potplayer', 'play-vlc', 'play-iina', 'play-download-m3u', 'play-copy', 'play-open'];
+  playerButtons.forEach(id => {
+    const el = $(id);
+    if (el) el.hidden = !hasAddr;
+  });
+
+  if (hasAddr) {
+    $('play-open').href = address;
+
+    // Android Intent: standard android.intent.action.VIEW intent for video players (MX Player, VLC, system players)
+    const noScheme = address.replace(/^https?:\/\//i, '');
+    const scheme = address.startsWith('https://') ? 'https' : 'http';
+    const androidIntent = `intent://${noScheme}#Intent;action=android.intent.action.VIEW;type=video/*;scheme=${scheme};end`;
+    if ($('play-android')) {
+      $('play-android').href = androidIntent;
+      $('play-android').setAttribute('data-intent', androidIntent);
+    }
+
+    // Windows PotPlayer
+    if ($('play-potplayer')) $('play-potplayer').href = `potplayer://${address}`;
+
+    // Cross-platform VLC
+    if ($('play-vlc')) $('play-vlc').href = `vlc://${address}`;
+
+    // macOS IINA
+    if ($('play-iina')) $('play-iina').href = `iina://weblink?url=${encodeURIComponent(address)}`;
+  } else {
+    $('play-open').removeAttribute('href');
+    if ($('play-android')) {
+      $('play-android').removeAttribute('href');
+      $('play-android').removeAttribute('data-intent');
+    }
+    if ($('play-potplayer')) $('play-potplayer').removeAttribute('href');
+    if ($('play-vlc')) $('play-vlc').removeAttribute('href');
+    if ($('play-iina')) $('play-iina').removeAttribute('href');
+  }
 }
 
 for (const id of ['play-mode', 'play-replay', 'play-start', 'play-end']) {
   $(id).onchange = updatePlayAddress;
+}
+
+if ($('play-android')) {
+  $('play-android').onclick = (e) => {
+    const intentUrl = $('play-android').getAttribute('data-intent');
+    if (intentUrl) {
+      window.location.href = intentUrl;
+      e.preventDefault();
+    }
+  };
+}
+
+if ($('play-copy')) {
+  $('play-copy').onclick = async () => {
+    const addr = $('play-address').textContent;
+    if (!addr) return;
+    try {
+      await navigator.clipboard.writeText(addr);
+      const orig = $('play-copy').textContent;
+      $('play-copy').textContent = '已复制！';
+      setTimeout(() => { $('play-copy').textContent = orig; }, 1800);
+    } catch (_) {
+      prompt('请复制流地址：', addr);
+    }
+  };
+}
+
+if ($('play-download-m3u')) {
+  $('play-download-m3u').onclick = () => {
+    const addr = $('play-address').textContent;
+    if (!addr || !playing) return;
+    const name = playing.name || 'channel';
+    const m3u = `#EXTM3U
+#EXTINF:-1 tvg-name="${name}" tvg-logo="${playing.logo || ''}",${name}
+${addr}
+`;
+    const blob = new Blob([m3u], { type: 'application/x-mpegurl;charset=utf-8' });
+    const u = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = u;
+    a.download = `${name}.m3u`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(u);
+  };
 }
 
 $('match-logo').onclick = () => busy($('match-logo'), async () => {
