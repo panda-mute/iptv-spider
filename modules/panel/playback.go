@@ -211,14 +211,28 @@ func (s *Service) ServePlay(w http.ResponseWriter, r *http.Request) {
 	cfg, _ := s.Store.Snapshot()
 	mode := q.Get("mode")
 	if mode == "" {
-		if c.OperatorID != "" && cfg.Forward.PlayMode != "unicast" {
+		if strings.Contains(r.URL.Path, ".m3u8") && c.OperatorID != "" {
+			mode = "http"
+		} else if c.OperatorID != "" && cfg.Forward.PlayMode != "unicast" {
 			mode = "http"
 		} else {
 			mode = "unicast"
 		}
 	}
+	if mode == "multicast" {
+		target := c.PlayURL
+		if target == "" {
+			target = PlaybackURL(cfg.Forward, c.URL)
+		}
+		if target == "" {
+			failure(w, 404, errors.New("该频道没有组播播放地址"))
+			return
+		}
+		http.Redirect(w, r, target, http.StatusFound)
+		return
+	}
 	if mode != "http" && mode != "unicast" {
-		failure(w, 400, errors.New("播放方式只支持 http 或 unicast"))
+		failure(w, 400, errors.New("播放方式只支持 http、unicast 或 multicast"))
 		return
 	}
 

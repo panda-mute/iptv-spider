@@ -151,6 +151,9 @@ export IPTV_PANEL_TOKEN='请替换为强随机访问令牌'
 | 接口 | 方法 | 说明 |
 | :--- | :--- | :--- |
 | `/` | `GET` | 中文 Web 管理控制台 |
+| `/player` | `GET` | 内嵌专用 Web 网页播放器（基于 rtp2httpd，全离线 MSE/HLS、MP2 WASM 解码、时移与遥控） |
+| `/playlist.m3u` | `GET`, `HEAD` | 根路径标准 M3U 播放列表 |
+| `/epg.xml` | `GET`, `HEAD` | 根路径 XMLTV 电子节目单 |
 | `/api/playlist?mode=multicast` | `GET`, `HEAD` | 组播 M3U 播放列表（默认） |
 | `/api/playlist?mode=unicast` | `GET`, `HEAD` | RTSP 包装单播与 7 天时移回看 M3U |
 | `/api/playlist?mode=http` | `GET`, `HEAD` | 运营商官方 HTTP/HLS 直播与回看 M3U |

@@ -69,6 +69,12 @@ func TestCatchupRedirectAndValidation(t *testing.T) {
 	if w.Code != 302 || u.Query().Get("AuthInfo") != "a+b" || u.Query().Get("playseek") != start.In(zone).Format("20060102150405")+"-"+end.In(zone).Format("20060102150405") {
 		t.Fatal(w.Code, u)
 	}
+	// Test multicast mode redirect
+	wMulti := httptest.NewRecorder()
+	s.ServePlay(wMulti, httptest.NewRequest("GET", "/api/play?id=1&mode=multicast", nil))
+	if wMulti.Code != 302 || !strings.Contains(wMulti.Header().Get("Location"), "/rtp/239.1.1.1:5140") {
+		t.Fatalf("expected 302 to multicast target, got %d, %s", wMulti.Code, wMulti.Header().Get("Location"))
+	}
 	for _, bad := range []string{"&start=abc&end=4", "&start=1&end=2", "&start=" + strconv.FormatInt(end.Unix(), 10) + "&end=" + strconv.FormatInt(start.Unix(), 10)} {
 		w = httptest.NewRecorder()
 		s.ServePlay(w, httptest.NewRequest("GET", "/api/play?id=1&mode=unicast"+bad, nil))

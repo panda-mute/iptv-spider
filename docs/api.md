@@ -11,7 +11,8 @@
    - [2.1 播放列表导出 (`/api/playlist` 或 `/api/m3u8`)](#21-播放列表导出-apiplaylist-或-apim3u8)
    - [2.2 统一流媒体与回看重定向 (`/api/play`)](#22-统一流媒体与回看重定向-apiplay)
    - [2.3 XMLTV 电子节目单 (`/api/epg`)](#23-xmltv-电子节目单-apiepg)
-   - [2.4 兼容性接口](#24-兼容性接口)
+   - [2.4 内嵌专用网页播放器 (`/player`)](#24-内嵌专用网页播放器-player)
+   - [2.5 兼容性与根路径接口](#25-兼容性与根路径接口)
 3. [管理面板 API (`/api/panel/...`)](#3-管理面板-api-apipanel)
    - [3.1 鉴权机制](#31-鉴权机制)
    - [3.2 系统状态与设置](#32-系统状态与设置)
@@ -146,9 +147,26 @@ http://192.168.1.100:8888/api/play?id=1&mode=unicast
 
 ---
 
-### 2.4 兼容性接口
+### 2.4 内嵌专用网页播放器 (`/player`)
 
-- `GET /api/tsM3u8`: 兼容旧版项目 M3U 导出。
+系统内置基于 `rtp2httpd` 官方深度优化的现代化 Web 网页播放器，100% 静态资产内嵌编译，在隔离的 IPTV 专网/内网环境下无需任何外网 CDN 即可完整流畅运行。
+
+- **访问地址**：`http://<server-ip>:8888/player` 或 `http://<server-ip>:8888/player.html`
+- **核心特性**：
+  - **多引擎无缝播放**：内置 MSE MPEG-TS 解复用器与 HLS 流引擎，智能自适应 HTTP 直播、RTSP 单播与 udpxy 组播流。
+  - **WASM MP2 音频解码**：集成 WebAssembly 原生解码器，自动解码 CCTV / 各省卫视传统 MPEG-2 Audio (MP2) 音频轨道并通过 Web Audio 渲染。
+  - **画质增强与去隔行**：集成 FSR 图像超分辨率算法与 BWDIF 运动自适应去隔行 WebGL 着色器。
+  - **EPG 时间线与时移回看**：自动从 `/api/epg` 加载节目单并生成可交互时间线，历史节目支持一键回看（Catchup），正在直播节目支持进度回退。
+  - **遥控器与键盘友好**：支持 D-Pad 方向键换台、数字键直达、全屏切换（`F`）、静音（`M`）、侧边栏切换（`C`）。
+  - **Deep-Link 频道直达**：支持携带频道 Hash，如 `http://<ip>:8888/player?mode=http#东方卫视` 直接定位播放。
+
+---
+
+### 2.5 兼容性与根路径接口
+
+- `GET /playlist.m3u`: 根路径标准 M3U 播放列表（自动对接网页播放器与第三方播放器）。
+- `GET /epg.xml`, `GET /epg.xml.gz`: 根路径 XMLTV 电子节目单（标准及压缩格式）。
+- `GET /api/tsM3u8`: 兼容旧版项目单播 M3U 导出。
 - `GET /api/schedule`: 触发后台 EPG 增量同步调度。
 
 ---

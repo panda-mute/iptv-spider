@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -18,6 +19,14 @@ import (
 
 //go:embed web/*
 var web embed.FS
+
+func init() {
+	_ = mime.AddExtensionType(".wasm", "application/wasm")
+	_ = mime.AddExtensionType(".js", "application/javascript; charset=utf-8")
+	_ = mime.AddExtensionType(".css", "text/css; charset=utf-8")
+	_ = mime.AddExtensionType(".m3u", "audio/x-mpegurl; charset=utf-8")
+	_ = mime.AddExtensionType(".m3u8", "application/vnd.apple.mpegurl")
+}
 
 func jsonResponse(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -48,6 +57,37 @@ func (s *Service) Handler(token string) http.Handler {
 	assets, _ := fs.Sub(web, "web")
 	mux.HandleFunc("GET /logos/{file...}", s.ServeLocalLogo)
 	mux.HandleFunc("GET /api/panel/logos/local/{file...}", s.ServeLocalLogo)
+	mux.HandleFunc("GET /api/epg/programmes", s.ServeEPGPrograms)
+	mux.HandleFunc("GET /player", func(w http.ResponseWriter, r *http.Request) {
+		data, err := fs.ReadFile(assets, "player.html")
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(data)
+	})
+	mux.HandleFunc("GET /player.html", func(w http.ResponseWriter, r *http.Request) {
+		data, err := fs.ReadFile(assets, "player.html")
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(data)
+	})
+	mux.HandleFunc("GET /playlist.m3u", s.ServePlaylist)
+	mux.HandleFunc("HEAD /playlist.m3u", s.ServePlaylist)
+	mux.HandleFunc("GET /epg.xml", s.ServeEPG)
+	mux.HandleFunc("HEAD /epg.xml", s.ServeEPG)
+	mux.HandleFunc("GET /epg.xml.gz", s.ServeEPG)
+	mux.HandleFunc("HEAD /epg.xml.gz", s.ServeEPG)
+	mux.HandleFunc("GET /api/play", s.ServePlay)
+	mux.HandleFunc("HEAD /api/play", s.ServePlay)
+	mux.HandleFunc("GET /api/play.m3u8", s.ServePlay)
+	mux.HandleFunc("HEAD /api/play.m3u8", s.ServePlay)
+	mux.HandleFunc("GET /api/play/live.m3u8", s.ServePlay)
+	mux.HandleFunc("HEAD /api/play/live.m3u8", s.ServePlay)
 	mux.Handle("/", http.FileServer(http.FS(assets)))
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/panel/logos/status", func(w http.ResponseWriter, r *http.Request) { jsonResponse(w, 200, s.LogoSourcesStatus()) })
@@ -373,7 +413,7 @@ func (s *Service) Handler(token string) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: http: https:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http: https:; media-src 'self' blob: data: http: https:; connect-src 'self' blob: data: http: https:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'")
 		mux.ServeHTTP(w, r)
 	})
 }
