@@ -62,6 +62,10 @@ func (s *Service) Channels() ([]Channel, error) {
 			return nil, err
 		}
 		for _, c := range base {
+			if s.Store != nil {
+				s.Store.ApplyMapping(&c)
+			}
+			PreclassifyChannel(&c)
 			key := c.EnsureKey()
 			byKey[key] = c
 		}
@@ -96,6 +100,9 @@ func (s *Service) Channels() ([]Channel, error) {
 		}
 		if c.Source != "iptv" && c.OriginalID != "" {
 			c.OriginalID = ""
+		}
+		if s.Store != nil {
+			s.Store.ApplyMapping(&c)
 		}
 		if c.Logo == "" || c.LogoAutomatic {
 			if local := s.FindLocalLogo(c.Name); local != "" {

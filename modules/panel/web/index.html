@@ -327,8 +327,9 @@
           <div class="section-head">
             <div>
               <h2>频道关键词映射</h2>
-              <p>保存自定义关键词与目标频道（数字台号/运营商ID）的映射关系。匹配或智能识别频道时将优先采用。</p>
+              <p>预设或自定义关键词与目标频道（数字台号/运营商ID/台标）的映射关系。用户可自由调整，匹配或导入频道时优先采用。</p>
             </div>
+            <button type="button" class="secondary" id="reset-mappings-btn" style="height: 32px; font-size: 13px;">恢复默认预设</button>
           </div>
           <div class="table-wrap" style="max-height: 280px; overflow-y: auto; margin-bottom: 12px;">
             <table>
@@ -738,7 +739,7 @@
           <small id="logo-status" role="status">未设置台标（可点击此处上传本地图片）</small>
         </div>
       </div>
-      <label class="wide">频道源 URL<input name="url" required placeholder="igmp://239.45.0.1:5140"></label>
+      <label class="wide">频道源 URL<input name="url" required placeholder="igmp://233.18.204.1:5140"></label>
       <label class="wide">单播 / 时移源 URL<input name="unicast_url" placeholder="rtsp://... 或 https://.../live.m3u8"></label>
       <label>回看天数（0 关闭）<input name="catchup_days" type="number" min="0" max="30" value="0"></label>
       <label class="check"><input name="enabled" type="checkbox" checked>启用频道</label>

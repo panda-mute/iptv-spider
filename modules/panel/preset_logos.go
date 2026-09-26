@@ -65,6 +65,11 @@ func (s *Service) FindLocalLogo(name string) string {
 	if s == nil || s.LogosDir == "" {
 		return ""
 	}
+	if s.Store != nil {
+		if m, found := s.Store.FindMapping(name); found && m.TargetName != "" {
+			name = m.TargetName
+		}
+	}
 	return findLocalLogoInDir(s.LogosDir, name)
 }
 

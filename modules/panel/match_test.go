@@ -294,8 +294,15 @@ func TestMatchChannelCandidatesAndKeywordMappings(t *testing.T) {
 		t.Fatalf("expected mapping to be found, got %+v", m)
 	}
 	allMappings := s.Store.Mappings()
-	if len(allMappings) != 1 || allMappings[0].Keyword != "cctv16-olympic" {
-		t.Fatalf("expected 1 mapping, got %+v", allMappings)
+	foundOlympic := false
+	for _, mapping := range allMappings {
+		if mapping.Keyword == "cctv16-olympic" {
+			foundOlympic = true
+			break
+		}
+	}
+	if !foundOlympic {
+		t.Fatalf("expected cctv16-olympic mapping to be present, got %+v", allMappings)
 	}
 
 	// 5. Querying with mapped keyword returns saved candidate at top with IsSaved == true
@@ -339,5 +346,19 @@ func TestMatchChannelCandidatesAndKeywordMappings(t *testing.T) {
 	handler.ServeHTTP(wDel, reqDel)
 	if wDel.Code != 200 {
 		t.Fatalf("DELETE /mappings/yicai returned %d", wDel.Code)
+	}
+
+	// POST /api/panel/mappings/reset
+	reqReset := httptest.NewRequest("POST", "/api/panel/mappings/reset", nil)
+	reqReset.Header.Set("Authorization", "Bearer test-token")
+	wReset := httptest.NewRecorder()
+	handler.ServeHTTP(wReset, reqReset)
+	if wReset.Code != 200 {
+		t.Fatalf("POST /mappings/reset returned %d", wReset.Code)
+	}
+	var resetList []ChannelMapping
+	_ = json.Unmarshal(wReset.Body.Bytes(), &resetList)
+	if len(resetList) != len(DefaultMappings()) {
+		t.Fatalf("expected %d default mappings after reset, got %d", len(DefaultMappings()), len(resetList))
 	}
 }

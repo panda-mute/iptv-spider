@@ -171,6 +171,17 @@ func (s *Service) Handler(token string) http.Handler {
 		}
 		jsonResponse(w, 200, s.Store.Mappings())
 	})
+	api.HandleFunc("POST /api/panel/mappings/reset", func(w http.ResponseWriter, r *http.Request) {
+		if s.Store == nil {
+			failure(w, 503, errors.New("存储服务未就绪"))
+			return
+		}
+		if err := s.Store.ResetMappings(); err != nil {
+			failure(w, 500, err)
+			return
+		}
+		jsonResponse(w, 200, s.Store.Mappings())
+	})
 	api.HandleFunc("POST /api/panel/mappings", func(w http.ResponseWriter, r *http.Request) {
 		if s.Store == nil {
 			failure(w, 503, errors.New("存储服务未就绪"))

@@ -20,6 +20,7 @@ type ChannelMapping struct {
 	TargetName string `json:"target_name"`
 	OperatorID string `json:"operator_id,omitempty"`
 	Group      string `json:"group,omitempty"`
+	Logo       string `json:"logo,omitempty"`
 }
 
 type Suggestion struct {
@@ -132,7 +133,7 @@ type state struct {
 	Settings Settings                  `json:"settings"`
 	Channels map[string]Channel        `json:"channels"`
 	Imported []Channel                 `json:"imported"`
-	Mappings map[string]ChannelMapping `json:"mappings,omitempty"`
+	Mappings map[string]ChannelMapping `json:"mappings"`
 }
 
 type Store struct {
@@ -178,16 +179,25 @@ func OpenStore(path string, defaults Settings) (*Store, error) {
 		if s.data.Channels == nil {
 			s.data.Channels = map[string]Channel{}
 		}
-		if s.data.Mappings == nil {
-			s.data.Mappings = map[string]ChannelMapping{}
-		}
-		for k, ch := range s.data.Channels {
-			if PreclassifyChannel(&ch) {
-				s.data.Channels[k] = ch
-			}
-		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
+	}
+	if s.data.Mappings == nil {
+		s.data.Mappings = map[string]ChannelMapping{}
+		for _, m := range DefaultMappings() {
+			s.data.Mappings[normalizeMappingKey(m.Keyword)] = m
+		}
+	}
+	for k, ch := range s.data.Channels {
+		m1 := s.ApplyMapping(&ch)
+		m2 := PreclassifyChannel(&ch)
+		if m1 || m2 {
+			s.data.Channels[k] = ch
+		}
+	}
+	for i := range s.data.Imported {
+		s.ApplyMapping(&s.data.Imported[i])
+		PreclassifyChannel(&s.data.Imported[i])
 	}
 	if s.data.Version == 1 {
 		if err := s.update(func(d *state) error { d.Version = 2; return nil }); err != nil {
@@ -353,6 +363,7 @@ func (s *Store) Import(channels []Channel) error {
 	channels = append([]Channel(nil), channels...)
 	for i := range channels {
 		channels[i].EnsureKey()
+		s.ApplyMapping(&channels[i])
 		PreclassifyChannel(&channels[i])
 		if g := PreclassifyMulticastGroup(channels[i].URL); g != "" && g != "待识别" {
 			if channels[i].Group == "" || channels[i].Group == "待识别" || channels[i].Group == "未分组" || (g == "4K" && channels[i].Group != "4K") || (g == "央视" && channels[i].Group == "高清") {
@@ -392,6 +403,7 @@ func (s *Store) Discover(c Channel) error {
 				return nil
 			}
 		}
+		s.ApplyMapping(&c)
 		PreclassifyChannel(&c)
 		c.EnsureKey()
 		if _, ok := d.Channels[c.Key]; !ok {
@@ -423,6 +435,7 @@ func (s *Store) SaveMapping(m ChannelMapping) error {
 	}
 	m.OperatorID = strings.TrimSpace(m.OperatorID)
 	m.Group = strings.TrimSpace(m.Group)
+	m.Logo = strings.TrimSpace(m.Logo)
 
 	return s.update(func(d *state) error {
 		if d.Mappings == nil {
@@ -474,4 +487,88 @@ func (s *Store) FindMapping(keyword string) (ChannelMapping, bool) {
 		return m, true
 	}
 	return ChannelMapping{}, false
+}
+
+// DefaultMappings returns the preset channel keyword mappings.
+func DefaultMappings() []ChannelMapping {
+	return []ChannelMapping{
+		{
+			Keyword:    "体育频道",
+			TargetName: "五星体育",
+			TargetID:   "8",
+			OperatorID: "ch00000000000000001346",
+			Group:      "本地",
+			Logo:       "/logos/五星体育.png",
+		},
+		{
+			Keyword:    "体育频道HD",
+			TargetName: "五星体育HD",
+			TargetID:   "108",
+			OperatorID: "ch00000000000000001182",
+			Group:      "本地",
+			Logo:       "/logos/五星体育.png",
+		},
+		{
+			Keyword:    "卡酷卡通",
+			TargetName: "卡酷少儿",
+			TargetID:   "237",
+			OperatorID: "ch00000000000000001102",
+			Group:      "标清",
+			Logo:       "/logos/卡酷少儿.png",
+		},
+		{
+			Keyword:    "卡酷卡通HD",
+			TargetName: "卡酷少儿HD",
+			TargetID:   "167",
+			OperatorID: "ch00000000000000001344",
+			Group:      "高清",
+			Logo:       "/logos/卡酷少儿.png",
+		},
+	}
+}
+
+// ResetMappings restores the channel keyword mappings to system defaults.
+func (s *Store) ResetMappings() error {
+	return s.update(func(d *state) error {
+		d.Mappings = map[string]ChannelMapping{}
+		for _, m := range DefaultMappings() {
+			d.Mappings[normalizeMappingKey(m.Keyword)] = m
+		}
+		return nil
+	})
+}
+
+// ApplyMapping applies configured keyword mapping to a channel.
+func (s *Store) ApplyMapping(c *Channel) bool {
+	if s == nil || c == nil {
+		return false
+	}
+	m, found := s.FindMapping(c.Name)
+	if !found {
+		return false
+	}
+	changed := false
+	if m.TargetName != "" && c.Name != m.TargetName {
+		c.Name = m.TargetName
+		changed = true
+	}
+	if m.TargetID != "" && IsInvalidChannelID(c.ID) && IsValidChannelID(m.TargetID) {
+		c.ID = m.TargetID
+		changed = true
+	}
+	if m.OperatorID != "" && c.OperatorID == "" {
+		c.OperatorID = m.OperatorID
+		changed = true
+	}
+	if m.Group != "" && (c.Group == "" || c.Group == "待识别" || c.Group == "未分组") {
+		c.Group = m.Group
+		changed = true
+	}
+	if m.Logo != "" && (c.Logo == "" || strings.Contains(c.Logo, "_") || strings.HasPrefix(c.Logo, "/logos/未知频道") || c.Logo == "/logos/体育频道.png") {
+		if c.Logo != m.Logo {
+			c.Logo = m.Logo
+			changed = true
+		}
+	}
+	return changed
 }

@@ -68,7 +68,7 @@ func DefaultSettings() Settings {
 			FCCList:         DefaultFCCList(),
 			CatchupTemplate: DefaultCatchupTemplate,
 		},
-		Scan:              ScanConfig{StartIP: "239.45.0.1", EndIP: "239.45.0.10", StartPort: 5140, EndPort: 5140, Workers: 4, Timeout: 5},
+		Scan:              ScanConfig{StartIP: "233.18.204.1", EndIP: "233.18.204.254", StartPort: 5140, EndPort: 5140, Workers: 4, Timeout: 5},
 		AI:                AIConfig{BaseURL: "https://api.openai.com/v1"},
 		GroupOrder:        DefaultGroupOrder(),
 		GroupChannelOrder: map[string][]string{},

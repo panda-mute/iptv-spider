@@ -310,7 +310,7 @@ function updatePreview() {
   const fccStr = v.fcc ? '?fcc=' + v.fcc : '';
   const tpl = v.catchup_template || '&utc=${start}&lutc=${end}';
   const normTpl = tpl.startsWith('&') || tpl.startsWith('?') ? (tpl.startsWith('?') ? '&' + tpl.slice(1) : tpl) : '&' + tpl;
-  $('url-preview').textContent = `直播: http://${v.address || 'IP:端口'}/${v.protocol}/239.45.0.1:5140${fccStr}\n回看: http://${location.host || '当前服务'}/api/play?id=1&mode=unicast${normTpl}`;
+  $('url-preview').textContent = `直播: http://${v.address || 'IP:端口'}/${v.protocol}/233.18.204.1:5140${fccStr}\n回看: http://${location.host || '当前服务'}/api/play?id=1&mode=unicast${normTpl}`;
 }
 
 document.querySelectorAll('[data-setting^="forward."]').forEach(el => el.addEventListener('input', updatePreview));
@@ -2099,6 +2099,19 @@ if ($('add-mapping-form')) {
         toast(`添加映射失败: ${err.message}`, true);
       }
     });
+  };
+}
+
+if ($('reset-mappings-btn')) {
+  $('reset-mappings-btn').onclick = async () => {
+    if (!confirm('确定将频道关键词映射恢复为默认预设吗？')) return;
+    try {
+      await api('mappings/reset', 'POST');
+      toast('已恢复为默认关键词映射');
+      await loadMappings();
+    } catch (err) {
+      toast(`恢复映射失败: ${err.message}`, true);
+    }
   };
 }
 
