@@ -51,7 +51,7 @@
 
 ## 2. 公共播放与订阅 API
 
-所有公共播放与订阅接口无需面板管理员 Token，专供各类电视盒子、手机或桌面播放器调用。
+所有公共播放与订阅接口无需面板管理员 Token，专供各类电视盒子、手机或桌面播放器调用。管理面板接口统一位于 `/api/panel/...`，需要管理员令牌或来自回环地址的请求。
 
 ### 2.1 播放列表导出 (`/api/playlist` 或 `/api/m3u8`)
 
@@ -148,8 +148,9 @@ http://192.168.1.100:8888/api/play?id=1&mode=unicast
 
 ### 2.4 兼容性接口
 
-- `GET /api/tsM3u8`: 兼容旧版项目 M3U 导出。
-- `GET /api/schedule`: 触发后台 EPG 增量同步调度。
+- `GET|HEAD /api/tsM3u8`: 兼容旧版项目 M3U 导出，强制使用 `unicast` 模式。
+- `GET /api/schedule`: 返回后台 cron 任务的上次和下次执行时间，不会触发同步。
+- `GET /api/run`: 已废弃，返回 `410`；管理操作请使用受保护的 `POST /api/panel/refresh`。
 
 ---
 
@@ -159,12 +160,12 @@ http://192.168.1.100:8888/api/play?id=1&mode=unicast
 
 ### 3.1 鉴权机制
 
-- **本地回环白名单**：来自 `127.0.0.1` / `::1` 的连接默认放行（便于本地调试）。
+- **本地回环白名单**：未配置令牌时，来自 `127.0.0.1` / `::1` 的连接默认放行（便于本地调试）。
 - **远程鉴权**：非本地连接需在请求头携带管理员令牌：
   ```http
   Authorization: Bearer <IPTV_PANEL_TOKEN>
   ```
-  管理员令牌通过启动环境变量 `export IPTV_PANEL_TOKEN="你的安全密码"` 配置。
+  管理员令牌优先读取环境变量 `IPTV_PANEL_TOKEN`；未设置时读取 `${IPTV_DATA_DIR}/admin-token`（默认 `data/admin-token`）。两者都未设置时，远程管理请求会返回 `403`。
 
 ---
 
@@ -205,6 +206,8 @@ http://192.168.1.100:8888/api/play?id=1&mode=unicast
     "clear_api_key": false
   }
   ```
+
+`forward.play_mode` 只能是 `multicast`、`unicast` 或 `http`；`forward.protocol` 只能是 `rtp` 或 `udp`。EPG 设置范围为同步间隔 1–168 小时、历史 0–14 天、未来 0–7 天；扫描范围最多 65536 个 IP/端口组合。
 
 ---
 
@@ -269,7 +272,7 @@ http://192.168.1.100:8888/api/play?id=1&mode=unicast
 ### 3.7 EPG 节目管理
 
 - `GET /api/panel/epg/status`: EPG 缓存状态、收录频道与节目条数。
-- `POST /api/panel/epg/refresh`: 手动触发一次 EPG 节目单同步。
+- `POST /api/panel/epg/refresh`: 手动触发一次 EPG 节目单同步；需要启用 IPTV 认证。EPG 快照默认写入 `epg.json`，配置 MySQL 后改用数据库保存。
 - `GET /api/panel/epg/programmes?id={id}&date={YYYY-MM-DD}`: 获取特定频道特定日期的节目单详情（包含节目标题、起止时间、详情简介 `desc` 等）。
 
 ---

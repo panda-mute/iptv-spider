@@ -6,10 +6,10 @@ system:
   oss-type: 'minio' # 可选值：minio、cos
 
 stb:
-  uid: 'xxxxxxxxx@etv1'     # IPTV 用户名
-  mac: 'xx:xx:xx:xx:xx:xx' # 机顶盒Mac地址
-  sn: '000xxxxxxxxxxxxxxx' # 机顶盒SN码
-  ip: '22.77.xx.x' # 专网IP地址
+  uid: '12345678@etv1'     # IPTV 用户名（8位数字@etv数字）
+  mac: '00:11:22:33:44:55' # 机顶盒Mac地址
+  sn: '0001xxxxxxxxxxxxxxxxxxxx' # 机顶盒SN码（24位，前缀000）
+  ip: '10.0.0.10' # 专网IP地址
   type: 'B860A' # 机顶盒型号
   auth_host: '222.68.208.73:7001' # 认证服务器地址
 
