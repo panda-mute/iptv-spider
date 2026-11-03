@@ -403,7 +403,9 @@ func (s *Store) Discover(c Channel) error {
 				return nil
 			}
 		}
-		s.ApplyMapping(&c)
+		// update holds the store write lock, so use the state snapshot directly
+		// instead of calling ApplyMapping (which acquires a read lock).
+		applyMapping(&c, d.Mappings)
 		PreclassifyChannel(&c)
 		c.EnsureKey()
 		if _, ok := d.Channels[c.Key]; !ok {
@@ -475,18 +477,7 @@ func (s *Store) Mappings() []ChannelMapping {
 func (s *Store) FindMapping(keyword string) (ChannelMapping, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if s.data.Mappings == nil {
-		return ChannelMapping{}, false
-	}
-	key := normalizeMappingKey(keyword)
-	if m, ok := s.data.Mappings[key]; ok {
-		return m, true
-	}
-	sim := SimplifyForMatch(keyword)
-	if m, ok := s.data.Mappings[normalizeMappingKey(sim)]; ok {
-		return m, true
-	}
-	return ChannelMapping{}, false
+	return findMapping(s.data.Mappings, keyword)
 }
 
 // DefaultMappings returns the preset channel keyword mappings.
@@ -543,7 +534,19 @@ func (s *Store) ApplyMapping(c *Channel) bool {
 	if s == nil || c == nil {
 		return false
 	}
-	m, found := s.FindMapping(c.Name)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return applyMapping(c, s.data.Mappings)
+}
+
+// applyMapping applies a mapping from the supplied snapshot. Callers that
+// already hold the store lock must use this helper to avoid attempting to
+// acquire the same RWMutex recursively.
+func applyMapping(c *Channel, mappings map[string]ChannelMapping) bool {
+	if c == nil {
+		return false
+	}
+	m, found := findMapping(mappings, c.Name)
 	if !found {
 		return false
 	}
@@ -571,4 +574,19 @@ func (s *Store) ApplyMapping(c *Channel) bool {
 		}
 	}
 	return changed
+}
+
+func findMapping(mappings map[string]ChannelMapping, keyword string) (ChannelMapping, bool) {
+	if mappings == nil {
+		return ChannelMapping{}, false
+	}
+	key := normalizeMappingKey(keyword)
+	if m, ok := mappings[key]; ok {
+		return m, true
+	}
+	sim := SimplifyForMatch(keyword)
+	if m, ok := mappings[normalizeMappingKey(sim)]; ok {
+		return m, true
+	}
+	return ChannelMapping{}, false
 }
