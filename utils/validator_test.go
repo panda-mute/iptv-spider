@@ -54,11 +54,12 @@ func TestCheckUserID(t *testing.T) {
 
 func TestCheckSNCode(t *testing.T) {
 	data := map[string]bool{
-		"000100161231015063002D47":  true,
-		"000200325207021201504CB6":  true,
-		"000300325407022101504DC":   false,
+		"000100161231015063002D47": true,
+		"000200325207021201504CB6": true,
+		"000600325207021201504CB6": true,
+		"000300325407022101504DC":  false,
 		"000300325407022101504DC11": false,
-		"001300325407022101504DC9":  false,
+		"001300325407022101504DC9": false,
 	}
 
 	for s, b := range data {

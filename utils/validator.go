@@ -7,7 +7,10 @@ const (
 	macV2Regex  = "^([A-Fa-f0-9]{2}[-,:]){5}[A-Fa-f0-9]{2}$"
 	ipv4Regex   = `^(\b25[0-5]|\b2[0-4][0-9]|\b[01]?[0-9][0-9]?)(\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$`
 	userIdRegex = `^[0-9]{8}@etv[0-9]$`
-	snRegex     = `^000[1-4][0-9A-Za-z]{20}$`
+	// STB serial numbers are 24 characters long: three leading zeros, a
+	// numeric model code, and twenty alphanumeric characters. The model code
+	// is not limited to 1-4; newer STBs use values such as 6.
+	snRegex = `^000[0-9][0-9A-Za-z]{20}$`
 )
 
 // CheckMacAddressV1 检验Mac地址
