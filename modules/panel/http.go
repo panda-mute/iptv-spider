@@ -188,8 +188,8 @@ func (s *Service) Handler(token string) http.Handler {
 			return
 		}
 		var m ChannelMapping
-		if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-			failure(w, 400, errors.New("无效的映射数据"))
+		if err := decode(w, r, &m); err != nil {
+			failure(w, 400, err)
 			return
 		}
 		if err := s.Store.SaveMapping(m); err != nil {
@@ -332,13 +332,7 @@ func (s *Service) Handler(token string) http.Handler {
 			return
 		}
 		key := c.EnsureKey()
-		_ = s.Store.update(func(d *state) error {
-			if latest, ok := d.Channels[key]; ok {
-				latest.Resolution = res
-				d.Channels[key] = latest
-			}
-			return nil
-		})
+		_ = s.Store.SetResolution(c, res, true)
 		jsonResponse(w, 200, map[string]any{"resolution": res, "key": key})
 	})
 	api.HandleFunc("POST /api/panel/channels/{id}/identify", func(w http.ResponseWriter, r *http.Request) {

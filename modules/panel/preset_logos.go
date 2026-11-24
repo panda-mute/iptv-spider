@@ -8,10 +8,84 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 //go:embed preset_logos/*.png
 var presetLogosFS embed.FS
+
+var (
+	presetLogoOnce  sync.Once
+	presetLogoFiles map[string]bool
+)
+
+func loadPresetLogoIndex() map[string]bool {
+	presetLogoOnce.Do(func() {
+		presetLogoFiles = map[string]bool{}
+		if entries, err := fs.ReadDir(presetLogosFS, "preset_logos"); err == nil {
+			for _, e := range entries {
+				if !e.IsDir() {
+					presetLogoFiles[e.Name()] = true
+				}
+			}
+		}
+	})
+	return presetLogoFiles
+}
+
+type localLogoIndex struct {
+	exactFiles map[string]bool
+	byKey      map[string]string
+	presets    map[string]bool
+}
+
+func newLocalLogoIndex(dir string) *localLogoIndex {
+	idx := &localLogoIndex{
+		exactFiles: map[string]bool{},
+		byKey:      map[string]string{},
+		presets:    loadPresetLogoIndex(),
+	}
+	if dir == "" {
+		return idx
+	}
+	if entries, err := os.ReadDir(dir); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			name := e.Name()
+			idx.exactFiles[name] = true
+			if strings.HasSuffix(strings.ToLower(name), ".png") {
+				baseName := strings.TrimSuffix(name, filepath.Ext(name))
+				k := logoKey(baseName)
+				if k != "" && idx.byKey[k] == "" {
+					idx.byKey[k] = name
+				}
+			}
+		}
+	}
+	return idx
+}
+
+func (idx *localLogoIndex) find(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" || strings.HasPrefix(name, "未知频道") {
+		return ""
+	}
+	candidates := generateLocalLogoCandidates(name)
+	for _, cand := range candidates {
+		if idx.exactFiles[cand] || idx.presets[cand] {
+			return "/logos/" + cand
+		}
+	}
+	targetKey := logoKey(name)
+	if targetKey != "" {
+		if fn := idx.byKey[targetKey]; fn != "" {
+			return "/logos/" + fn
+		}
+	}
+	return ""
+}
 
 // EnsurePresetLogos copies embedded preset logos to s.LogosDir if not already initialized.
 // It creates a .initialized sentinel file so this copy is performed only once.
@@ -79,13 +153,14 @@ func findLocalLogoInDir(dir, name string) string {
 		return ""
 	}
 
+	presets := loadPresetLogoIndex()
 	candidates := generateLocalLogoCandidates(name)
 	for _, cand := range candidates {
 		targetPath := filepath.Join(dir, cand)
 		if fi, err := os.Stat(targetPath); err == nil && !fi.IsDir() {
 			return "/logos/" + cand
 		}
-		if _, err := presetLogosFS.ReadFile("preset_logos/" + cand); err == nil {
+		if presets[cand] {
 			return "/logos/" + cand
 		}
 	}

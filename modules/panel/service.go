@@ -54,6 +54,7 @@ func NewService(store *Store) *Service {
 
 func (s *Service) Channels() ([]Channel, error) {
 	settings, overrides := s.Store.Snapshot()
+	mappings := s.Store.MappingsSnapshot()
 	byKey := map[string]Channel{}
 	imported := s.Store.Imported()
 	if s.Load != nil && len(imported) == 0 {
@@ -62,9 +63,7 @@ func (s *Service) Channels() ([]Channel, error) {
 			return nil, err
 		}
 		for _, c := range base {
-			if s.Store != nil {
-				s.Store.ApplyMapping(&c)
-			}
+			applyMapping(&c, mappings)
 			PreclassifyChannel(&c)
 			key := c.EnsureKey()
 			byKey[key] = c
@@ -81,7 +80,9 @@ func (s *Service) Channels() ([]Channel, error) {
 			base, ok = byKey[c.OriginalID]
 		}
 		if ok {
-			c.OperatorID = base.OperatorID
+			if base.OperatorID != "" && (!c.PlaybackCustom || c.OperatorID == "") {
+				c.OperatorID = base.OperatorID
+			}
 			if !c.PlaybackCustom {
 				c.UnicastURL = base.UnicastURL
 				c.CatchupDays = base.CatchupDays
@@ -93,6 +94,10 @@ func (s *Service) Channels() ([]Channel, error) {
 		key := c.EnsureKey()
 		byKey[key] = c
 	}
+	var logoIdx *localLogoIndex
+	if s.LogosDir != "" {
+		logoIdx = newLocalLogoIndex(s.LogosDir)
+	}
 	list := make([]Channel, 0, len(byKey))
 	for _, c := range byKey {
 		if c.ID == "" {
@@ -101,11 +106,17 @@ func (s *Service) Channels() ([]Channel, error) {
 		if c.Source != "iptv" && c.OriginalID != "" {
 			c.OriginalID = ""
 		}
-		if s.Store != nil {
-			s.Store.ApplyMapping(&c)
-		}
+		applyMapping(&c, mappings)
 		if c.Logo == "" || c.LogoAutomatic {
-			if local := s.FindLocalLogo(c.Name); local != "" {
+			local := ""
+			if logoIdx != nil {
+				lookupName := c.Name
+				if m, found := findMapping(mappings, lookupName); found && m.TargetName != "" {
+					lookupName = m.TargetName
+				}
+				local = logoIdx.find(lookupName)
+			}
+			if local != "" {
 				c.Logo = local
 				c.LogoAutomatic = true
 			} else if c.Logo == "" {
@@ -305,10 +316,10 @@ func (s *Service) StartProbe(ctx context.Context, onlyMissing bool) error {
 		s.probeMu.Unlock()
 		return errors.New("探测任务已在运行中")
 	}
+	s.probeMu.Unlock()
 
 	channels, err := s.Channels()
 	if err != nil {
-		s.probeMu.Unlock()
 		return err
 	}
 
@@ -327,10 +338,14 @@ func (s *Service) StartProbe(ctx context.Context, onlyMissing bool) error {
 	}
 
 	if len(targets) == 0 {
-		s.probeMu.Unlock()
 		return errors.New("没有需要探测的有效频道")
 	}
 
+	s.probeMu.Lock()
+	if s.probe.State == "running" {
+		s.probeMu.Unlock()
+		return errors.New("探测任务已在运行中")
+	}
 	pCtx, cancel := context.WithCancel(context.Background())
 	s.probeCancel = cancel
 	s.probe = Job{
@@ -370,14 +385,7 @@ func (s *Service) StartProbe(ctx context.Context, onlyMissing bool) error {
 					if err == nil && uri != "" {
 						res, err := ProbeResolutionFromURL(pCtx, uri)
 						if err == nil && res != "" {
-							key := c.EnsureKey()
-							_ = s.Store.update(func(d *state) error {
-								if latest, ok := d.Channels[key]; ok {
-									latest.Resolution = res
-									d.Channels[key] = latest
-								}
-								return nil
-							})
+							_ = s.Store.SetResolution(c, res, true)
 							s.probeMu.Lock()
 							s.probe.Found++
 							s.probeMu.Unlock()

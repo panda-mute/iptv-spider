@@ -1,8 +1,133 @@
+'use strict';
+
+const $ = (id) => document.getElementById(id);
+
+const DEFAULT_GROUP_ORDER = ['4K', '央视', '卫视', '高清', '本地', '少儿', '标清', '其它', '待识别'];
+const DEFAULT_LOGO_SOURCES = ['https://tvlogo.netioe.com'];
+const CATCHUP_PRESETS = [
+  '&utc=${start}&lutc=${end}',
+  '&start={utc}&end={utcend}',
+  '&utc={utc}&lutc={utcend}',
+  '&start=${timestamp}&duration=${duration}',
+];
+const PAGE_SIZE = 30;
+const JOB_STATES = {
+  idle: '待命',
+  running: '运行中',
+  stopping: '正在停止',
+  completed: '已完成',
+  cancelled: '已停止',
+  failed: '失败',
+};
+
+let settings = null;
+let channels = [];
+let page = 0;
+let editing = null;
+let playing = null;
+let toastTimer = null;
+let statusPollTimer = null;
+let epgPollTimer = null;
+let probePollTimer = null;
+let epgLiveTimer = null;
+let lastScanState = 'idle';
+let lastRefreshState = 'idle';
+let lastEPGState = '';
+let lastProbeState = 'idle';
+let epgRequestVersion = 0;
+let logoMatchVersion = 0;
+let pendingLogoMatch = null;
+let currentEPGProgrammes = [];
+let epgCurrentFilter = 'all';
+let currentLogoSources = [...DEFAULT_LOGO_SOURCES];
+let logoSourcesStatusData = {};
+let savedMappings = [];
+let currentGroupOrder = [...DEFAULT_GROUP_ORDER];
+let currentGroupChannelOrders = {};
+let selectedSortGroup = '';
+let currentCandidates = [];
+let currentMatchQuery = '';
+let tableUploadTargetChannel = null;
+let snapshotURL = null;
+
+/* ==========================================================================
+   Helpers & API
+   ========================================================================== */
+
+function toast(message, error = false) {
+  const el = $('toast');
+  if (!el) return;
+  el.textContent = message;
+  el.classList.toggle('error', error);
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, error ? 10000 : 4000);
+}
+
+async function copyText(text, successMsg = '已复制到剪贴板') {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const input = document.createElement('textarea');
+      input.value = text;
+      input.className = 'visually-hidden-input';
+      document.body.appendChild(input);
+      input.focus();
+      input.select();
+      const ok = document.execCommand('copy');
+      input.remove();
+      if (!ok) throw new Error('execCommand copy failed');
+    }
+    toast(successMsg);
+    return true;
+  } catch (_) {
+    toast('复制失败，请手动复制：' + text, true);
+    return false;
+  }
+}
+
+async function api(path, method = 'GET', body) {
+  const token = sessionStorage.getItem('iptv-token') || '';
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+  const headers = token ? { Authorization: 'Bearer ' + token } : {};
+  if (!isFormData) {
+    headers['Content-Type'] = 'application/json';
+  }
+  const response = await fetch('/api/panel/' + path, {
+    method,
+    headers,
+    ...(body !== undefined ? { body: isFormData ? body : JSON.stringify(body) } : {}),
+  });
+  if (response.status === 401 || response.status === 403) {
+    $('login').hidden = false;
+    $('workspace').hidden = true;
+  }
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw Error(error.error || '请求失败：' + response.status);
+  }
+  return response.headers.get('Content-Type')?.startsWith('image/') ? response.blob() : response.json();
+}
+
+async function busy(button, action) {
+  if (!button) return action();
+  button.disabled = true;
+  try {
+    await action();
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function getResolutionLabel(res) {
   if (!res) return '';
   const m = String(res).match(/^(\d{3,5})[xX*](\d{3,5})$/);
   if (!m) return res;
-  const w = parseInt(m[1], 10), h = parseInt(m[2], 10);
+  const w = parseInt(m[1], 10);
+  const h = parseInt(m[2], 10);
   if (h >= 2160 || w >= 3840) return '4K';
   if (h >= 1080 || w >= 1920) return '1080P';
   if (h >= 720 || w >= 1280) return '720P';
@@ -19,97 +144,56 @@ function getResolutionClass(res) {
   return 'badge-res-sd';
 }
 
-async function probeChannel(c) {
-  const ref = c.key || c.id;
-  try {
-    toast(`正在探测「${c.name}」的视频流分辨率…`);
-    const res = await api('channels/' + encodeURIComponent(ref) + '/probe', 'POST');
-    if (res && res.resolution) {
-      c.resolution = res.resolution;
-      renderChannels();
-      toast(`探测成功：「${c.name}」分辨率为 ${res.resolution} (${getResolutionLabel(res.resolution)})`);
-    } else {
-      toast(`未能探测到「${c.name}」的分辨率`, true);
-    }
-  } catch (err) {
-    toast(`探测「${c.name}」失败: ${err.message}`, true);
-  }
+function isLocalLogoPath(logo) {
+  return Boolean(logo && (logo.startsWith('/logos/') || logo.startsWith('/api/panel/logos/local/')));
 }
 
-'use strict';
-
-const $ = (id) => document.getElementById(id);
-let settings, channels = [], page = 0, editing = null, toastTimer, lastScanState = 'idle', lastRefreshState = 'idle';
-const pageSize = 30;
-let epgRequestVersion = 0, lastEPGState = '';
-let logoMatchVersion = 0, pendingLogoMatch = null;
-let currentEPGProgrammes = [], epgCurrentFilter = 'all', epgLiveTimer = null;
-
-function toast(message, error = false) {
-  const el = $('toast');
-  el.textContent = message;
-  el.classList.toggle('error', error);
-  el.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, error ? 10000 : 4000);
+function isInvalidID(id) {
+  return !id || id === '0' || id === '-1' || String(id).startsWith('scan-') || id === 'none' || id === 'unknown' || isNaN(Number(id)) || Number(id) <= 0;
 }
 
-async function copyText(text, successMsg = '已复制到剪贴板') {
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text);
-    } else {
-      const input = document.createElement('textarea');
-      input.value = text;
-      input.style.position = 'fixed';
-      input.style.opacity = '0';
-      document.body.appendChild(input);
-      input.focus();
-      input.select();
-      document.execCommand('copy');
-      input.remove();
-    }
-    toast(successMsg);
-  } catch (e) {
-    toast('复制失败，请手动复制：' + text, true);
-  }
+function isValidID(id) {
+  return !isInvalidID(id);
 }
 
-async function api(path, method = 'GET', body) {
-  const token = sessionStorage.getItem('iptv-token') || '';
-  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
-  const headers = {
-    ...(token ? { Authorization: 'Bearer ' + token } : {})
-  };
-  if (!isFormData) {
-    headers['Content-Type'] = 'application/json';
-  }
-  const response = await fetch('/api/panel/' + path, {
-    method,
-    headers,
-    ...(body !== undefined ? { body: isFormData ? body : JSON.stringify(body) } : {})
-  });
-  if (response.status === 401 || response.status === 403) {
-    $('login').hidden = false;
-    $('workspace').hidden = true;
-  }
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw Error(error.error || '请求失败：' + response.status);
-  }
-  return response.headers.get('Content-Type')?.startsWith('image/') ? response.blob() : response.json();
+function isUnknownChannel(c) {
+  return c.group === '待识别' || c.name.startsWith('未知频道') || isInvalidID(c.id);
 }
 
-async function busy(button, action) {
-  button.disabled = true;
-  try {
-    await action();
-  } catch (e) {
-    toast(e.message, true);
-  } finally {
-    button.disabled = false;
-  }
+function toIgmpUrl(rawUrl) {
+  if (!rawUrl) return '';
+  return rawUrl.replace(/^(?:rtp|udp):\/\//i, 'igmp://');
 }
+
+function cleanM3UValue(s) {
+  return String(s || '').replace(/[\r\n]/g, ' ').replace(/"/g, "'");
+}
+
+function getCCTVRank(name) {
+  const s = String(name || '').trim();
+  if (!s) return null;
+  const upper = s.toUpperCase();
+  const isCCTVScope = upper.includes('CCTV') || s.includes('中央') || s.includes('央视');
+  if (isCCTVScope && upper.includes('4K')) return 18.0;
+  if (isCCTVScope && upper.includes('8K')) return 19.0;
+  if (/cctv[-_\s]*5\s*(?:\+|plus)/i.test(s) || s.includes('中央五+') || s.includes('中央5+')) return 5.5;
+  const mNum = s.match(/cctv[-_\s]*(\d+)(?:\+?|\s*plus)?/i);
+  if (mNum) {
+    const val = parseInt(mNum[1], 10);
+    if (val >= 1 && val <= 17) return (upper.includes('+') || upper.includes('PLUS')) ? val + 0.5 : val;
+  }
+  const mCentral = s.match(/中央(?:电视台)?[-_\s]*(\d+)/);
+  if (mCentral) {
+    const val = parseInt(mCentral[1], 10);
+    if (val >= 1 && val <= 17) return s.includes('+') ? val + 0.5 : val;
+  }
+  if (isCCTVScope) return 100.0;
+  return null;
+}
+
+/* ==========================================================================
+   Navigation & Mobile Sidebar
+   ========================================================================== */
 
 function openMobileSidebar() {
   const aside = document.querySelector('aside');
@@ -127,87 +211,118 @@ function closeMobileSidebar() {
   document.body.classList.remove('drawer-opened');
 }
 
-if ($('mobile-menu-btn')) $('mobile-menu-btn').addEventListener('click', openMobileSidebar);
-if ($('sidebar-close-btn')) $('sidebar-close-btn').addEventListener('click', closeMobileSidebar);
-if ($('sidebar-backdrop')) $('sidebar-backdrop').addEventListener('click', closeMobileSidebar);
+$('mobile-menu-btn')?.addEventListener('click', openMobileSidebar);
+$('sidebar-close-btn')?.addEventListener('click', closeMobileSidebar);
+$('sidebar-backdrop')?.addEventListener('click', closeMobileSidebar);
 if ($('mobile-reload-btn') && $('reload')) {
   $('mobile-reload-btn').addEventListener('click', () => $('reload').click());
 }
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.body.classList.contains('drawer-opened')) {
+    closeMobileSidebar();
+  }
+});
 
 function tab(name) {
   closeMobileSidebar();
-  document.querySelectorAll('.tab').forEach(el => el.hidden = el.id !== 'tab-' + name);
-  document.querySelectorAll('[data-tab]').forEach(el => el.classList.toggle('active', el.dataset.tab === name));
+  document.querySelectorAll('.tab').forEach(el => {
+    el.hidden = el.id !== 'tab-' + name;
+  });
+  document.querySelectorAll('[data-tab]').forEach(el => {
+    const active = el.dataset.tab === name;
+    el.classList.toggle('active', active);
+    if (active) el.setAttribute('aria-current', 'page');
+    else el.removeAttribute('aria-current');
+  });
   $('page-title').textContent = {
     channels: '频道管理',
     account: 'IPTV配置',
     scan: '组播扫描',
     ai: '智能识别',
-    epg: 'EPG 节目单'
-  }[name];
+    epg: 'EPG 节目单',
+  }[name] || '控制台';
   if (name === 'channels') {
     const activeSubBtn = document.querySelector('.channel-subnav-btn.active');
-    const view = activeSubBtn ? activeSubBtn.dataset.channelView : 'list';
-    switchChannelView(view);
+    switchChannelView(activeSubBtn ? activeSubBtn.dataset.channelView : 'list');
   }
 }
 
 function switchChannelView(view) {
   document.querySelectorAll('.channel-subnav-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.channelView === view);
+    const active = btn.dataset.channelView === view;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', String(active));
   });
-  const listEl = $('channel-view-list');
-  const sortingEl = $('channel-view-sorting');
-  const mappingEl = $('channel-view-mapping');
-  if (listEl) listEl.hidden = (view !== 'list');
-  if (sortingEl) sortingEl.hidden = (view !== 'sorting');
-  if (mappingEl) mappingEl.hidden = (view !== 'mapping');
+  if ($('channel-view-list')) $('channel-view-list').hidden = (view !== 'list');
+  if ($('channel-view-sorting')) $('channel-view-sorting').hidden = (view !== 'sorting');
+  if ($('channel-view-mapping')) $('channel-view-mapping').hidden = (view !== 'mapping');
 
   if (view === 'sorting') {
-    if (typeof renderGroupOrderList === 'function') renderGroupOrderList();
-    if (typeof updateGroupChannelSelect === 'function') updateGroupChannelSelect();
+    renderGroupOrderList();
+    updateGroupChannelSelect();
   } else if (view === 'mapping') {
-    if (typeof loadMappings === 'function') loadMappings();
+    loadMappings();
   }
 }
 
-document.querySelectorAll('[data-tab]').forEach(el => el.addEventListener('click', () => tab(el.dataset.tab)));
+document.querySelectorAll('[data-tab]').forEach(el => {
+  el.addEventListener('click', () => tab(el.dataset.tab));
+});
 document.querySelectorAll('[data-channel-view]').forEach(btn => {
   btn.addEventListener('click', () => switchChannelView(btn.dataset.channelView));
 });
-document.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', () => $(el.dataset.close).close()));
+document.querySelectorAll('[data-close]').forEach(el => {
+  el.addEventListener('click', () => $(el.dataset.close)?.close());
+});
 
-const CATCHUP_PRESETS = [
-  "&utc=${start}&lutc=${end}",
-  "&start={utc}&end={utcend}",
-  "&utc={utc}&lutc={utcend}",
-  "&start=${timestamp}&duration=${duration}",
-];
+// Interactive top stat cards act as quick channel filters
+document.querySelectorAll('[data-stat-filter]').forEach(card => {
+  card.addEventListener('click', () => {
+    const filterVal = card.dataset.statFilter;
+    $('channel-filter').value = filterVal;
+    page = 0;
+    tab('channels');
+    switchChannelView('list');
+    renderChannels();
+  });
+});
+
+function syncStatCardActive() {
+  const filterVal = $('channel-filter')?.value || 'all';
+  const onChannelsList = !$('tab-channels')?.hidden && !$('channel-view-list')?.hidden;
+  document.querySelectorAll('[data-stat-filter]').forEach(card => {
+    card.classList.toggle('is-active', onChannelsList && card.dataset.statFilter === filterVal);
+  });
+}
+
+/* ==========================================================================
+   Settings, FCC & Catchup Template
+   ========================================================================== */
 
 function populateCatchupTemplateSelect(currentTpl) {
-  const select = $("catchup-template-select");
-  const input = $("forward-catchup-template-input");
+  const select = $('catchup-template-select');
+  const input = $('forward-catchup-template-input');
   if (!select) return;
-  const val = (currentTpl || "").trim() || "&utc=${start}&lutc=${end}";
+  const val = (currentTpl || '').trim() || CATCHUP_PRESETS[0];
 
   if (CATCHUP_PRESETS.includes(val)) {
     select.value = val;
     if (input) { input.value = val; input.hidden = true; }
-    select.classList.remove("is-custom");
+    select.classList.remove('is-custom');
   } else {
-    select.value = "__custom__";
+    select.value = '__custom__';
     if (input) { input.value = val; input.hidden = false; }
-    select.classList.add("is-custom");
+    select.classList.add('is-custom');
   }
 }
 
 function getActiveCatchupTemplate() {
-  const select = $("catchup-template-select");
-  const input = $("forward-catchup-template-input");
-  if (select && select.value === "__custom__") {
-    return input ? input.value.trim() : "";
+  const select = $('catchup-template-select');
+  const input = $('forward-catchup-template-input');
+  if (select && select.value === '__custom__') {
+    return input ? input.value.trim() : '';
   }
-  return select ? select.value : (input ? input.value.trim() : "");
+  return select ? select.value : (input ? input.value.trim() : '');
 }
 
 function populateFCCSelect(fccList, currentFCC) {
@@ -250,29 +365,6 @@ function populateFCCSelect(fccList, currentFCC) {
   }
 }
 
-function fillSettings(result) {
-  settings = result.settings;
-  document.querySelectorAll('[data-setting]').forEach(el => {
-    const [a, b] = el.dataset.setting.split('.');
-    const v = settings[a][b];
-    if (el.type === 'checkbox') el.checked = v;
-    else el.value = Array.isArray(v) ? v.join('\n') : (v ?? '');
-  });
-  $('clear-key').checked = false;
-  $('key-status').textContent = result.has_api_key ? '已保存 key（不会回显）' : '尚未配置 key；本地无认证接口可留空';
-  populateFCCSelect(settings.forward?.fcc_list, settings.forward?.fcc);
-  populateCatchupTemplateSelect(settings.forward?.catchup_template);
-  if (settings.logos) {
-    currentLogoSources = settings.logos.sources || (settings.logos.primary ? [settings.logos.primary] : ["https://tvlogo.netioe.com"]);
-  }
-  currentGroupOrder = settings.group_order || ["4K", "央视", "卫视", "高清", "本地", "少儿", "标清", "其它", "待识别"];
-  currentGroupChannelOrders = settings.group_channel_order || {};
-  if (typeof renderGroupOrderList === "function") renderGroupOrderList();
-  if (typeof renderLogoSourcesList === "function") renderLogoSourcesList();
-  if (typeof updateGroupChannelSelect === "function") updateGroupChannelSelect();
-  updatePreview();
-}
-
 function getActiveFCC() {
   const select = $('fcc-select');
   const input = $('forward-fcc-input');
@@ -282,16 +374,45 @@ function getActiveFCC() {
   return select ? select.value : (input ? input.value.trim() : '');
 }
 
+function fillSettings(result) {
+  settings = result.settings;
+  document.querySelectorAll('[data-setting]').forEach(el => {
+    const [a, b] = el.dataset.setting.split('.');
+    const v = settings[a]?.[b];
+    if (el.type === 'checkbox') el.checked = Boolean(v);
+    else el.value = Array.isArray(v) ? v.join('\n') : (v ?? '');
+  });
+  $('clear-key').checked = false;
+  $('key-status').textContent = result.has_api_key ? '已保存 key（不会回显）' : '尚未配置 key；本地无认证接口可留空';
+  populateFCCSelect(settings.forward?.fcc_list, settings.forward?.fcc);
+  populateCatchupTemplateSelect(settings.forward?.catchup_template);
+  if (settings.logos) {
+    currentLogoSources = settings.logos.sources || (settings.logos.primary ? [settings.logos.primary] : [...DEFAULT_LOGO_SOURCES]);
+  }
+  currentGroupOrder = settings.group_order?.length ? [...settings.group_order] : [...DEFAULT_GROUP_ORDER];
+  currentGroupChannelOrders = settings.group_channel_order ? structuredClone(settings.group_channel_order) : {};
+  renderGroupOrderList();
+  renderLogoSourcesList();
+  updateGroupChannelSelect();
+  updatePreview();
+}
+
 function collectSettings() {
   const value = structuredClone(settings);
   document.querySelectorAll('[data-setting]').forEach(el => {
     const [a, b] = el.dataset.setting.split('.');
-    value[a][b] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : el.tagName === 'TEXTAREA' ? el.value.split(/\s+/).filter(Boolean) : el.value.trim();
+    value[a][b] = el.type === 'checkbox'
+      ? el.checked
+      : el.type === 'number'
+        ? Number(el.value)
+        : el.tagName === 'TEXTAREA'
+          ? el.value.split(/\s+/).filter(Boolean)
+          : el.value.trim();
   });
   const activeFCC = getActiveFCC();
   value.forward.fcc = activeFCC;
   const activeTpl = getActiveCatchupTemplate();
-  value.forward.catchup_template = activeTpl || "&utc=${start}&lutc=${end}";
+  value.forward.catchup_template = activeTpl || CATCHUP_PRESETS[0];
   if (activeFCC) {
     if (!value.forward.fcc_list) value.forward.fcc_list = [];
     if (!value.forward.fcc_list.includes(activeFCC)) {
@@ -308,67 +429,61 @@ function updatePreview() {
   if (!settings) return;
   const v = collectSettings().forward;
   const fccStr = v.fcc ? '?fcc=' + v.fcc : '';
-  const tpl = v.catchup_template || '&utc=${start}&lutc=${end}';
-  const normTpl = tpl.startsWith('&') || tpl.startsWith('?') ? (tpl.startsWith('?') ? '&' + tpl.slice(1) : tpl) : '&' + tpl;
+  const tpl = v.catchup_template || CATCHUP_PRESETS[0];
+  const normTpl = tpl.startsWith('&') || tpl.startsWith('?')
+    ? (tpl.startsWith('?') ? '&' + tpl.slice(1) : tpl)
+    : '&' + tpl;
   $('url-preview').textContent = `直播: http://${v.address || 'IP:端口'}/${v.protocol}/233.18.204.1:5140${fccStr}\n回看: http://${location.host || '当前服务'}/api/play?id=1&mode=unicast${normTpl}`;
 }
 
-document.querySelectorAll('[data-setting^="forward."]').forEach(el => el.addEventListener('input', updatePreview));
+document.querySelectorAll('[data-setting^="forward."]').forEach(el => {
+  el.addEventListener('input', updatePreview);
+});
 
-if ($('fcc-select')) {
-  $('fcc-select').onchange = () => {
-    const select = $('fcc-select');
-    const input = $('forward-fcc-input');
-    if (select.value === '__custom__') {
-      select.classList.add('is-custom');
-      if (input) {
-        input.hidden = false;
-        input.focus();
-        input.select();
-      }
-    } else {
-      select.classList.remove('is-custom');
-      if (input) {
-        input.hidden = true;
-        input.value = select.value;
-      }
+$('fcc-select')?.addEventListener('change', () => {
+  const select = $('fcc-select');
+  const input = $('forward-fcc-input');
+  if (select.value === '__custom__') {
+    select.classList.add('is-custom');
+    if (input) {
+      input.hidden = false;
+      input.focus();
+      input.select();
     }
-    updatePreview();
-  };
-}
-
-if ($('forward-fcc-input')) {
-  $('forward-fcc-input').addEventListener('input', updatePreview);
-}
-
-if ($('catchup-template-select')) {
-  $('catchup-template-select').onchange = () => {
-    const select = $('catchup-template-select');
-    const input = $('forward-catchup-template-input');
-    if (select.value === '__custom__') {
-      select.classList.add('is-custom');
-      if (input) {
-        input.hidden = false;
-        if (!input.value.trim() || CATCHUP_PRESETS.includes(input.value.trim())) {
-          input.value = '&utc=${start}&lutc=${end}';
-        }
-        input.focus();
-        input.select();
-      }
-    } else {
-      select.classList.remove('is-custom');
-      if (input) {
-        input.hidden = true;
-        input.value = select.value;
-      }
+  } else {
+    select.classList.remove('is-custom');
+    if (input) {
+      input.hidden = true;
+      input.value = select.value;
     }
-    updatePreview();
-  };
-}
+  }
+  updatePreview();
+});
+$('forward-fcc-input')?.addEventListener('input', updatePreview);
 
-if ($('forward-catchup-template-input')) {
-  $('forward-catchup-template-input').addEventListener('input', updatePreview);
-}
+$('catchup-template-select')?.addEventListener('change', () => {
+  const select = $('catchup-template-select');
+  const input = $('forward-catchup-template-input');
+  if (select.value === '__custom__') {
+    select.classList.add('is-custom');
+    if (input) {
+      input.hidden = false;
+      if (!input.value.trim() || CATCHUP_PRESETS.includes(input.value.trim())) {
+        input.value = CATCHUP_PRESETS[0];
+      }
+      input.focus();
+      input.select();
+    }
+  } else {
+    select.classList.remove('is-custom');
+    if (input) {
+      input.hidden = true;
+      input.value = select.value;
+    }
+  }
+  updatePreview();
+});
+$('forward-catchup-template-input')?.addEventListener('input', updatePreview);
 
 async function saveSettings() {
   if (!settings) throw Error('请先连接面板');
@@ -376,57 +491,84 @@ async function saveSettings() {
   fillSettings(await api('settings'));
 }
 
-$('save-settings').onclick = () => busy($('save-settings'), async () => { await saveSettings(); toast('设置已保存'); });
-$('save-ai').onclick = () => busy($('save-ai'), async () => { await saveSettings(); toast('识别设置已保存'); });
+$('save-settings').onclick = () => busy($('save-settings'), async () => {
+  await saveSettings();
+  toast('设置已保存');
+});
+$('save-ai').onclick = () => busy($('save-ai'), async () => {
+  await saveSettings();
+  toast('识别设置已保存');
+});
 
-const isInvalidID = id => !id || id === "0" || id === "-1" || String(id).startsWith("scan-") || id === "none" || id === "unknown" || isNaN(Number(id)) || Number(id) <= 0;
-const isValidID = id => !isInvalidID(id);
-const unknown = c => c.group === "待识别" || c.name.startsWith("未知频道") || isInvalidID(c.id);
+/* ==========================================================================
+   Channel List & Inline Operations
+   ========================================================================== */
+
+async function probeChannel(c) {
+  const ref = c.key || c.id;
+  try {
+    toast(`正在探测「${c.name}」的视频流分辨率…`);
+    const res = await api('channels/' + encodeURIComponent(ref) + '/probe', 'POST');
+    if (res && res.resolution) {
+      c.resolution = res.resolution;
+      renderChannels();
+      toast(`探测成功：「${c.name}」分辨率为 ${res.resolution} (${getResolutionLabel(res.resolution)})`);
+    } else {
+      toast(`未能探测到「${c.name}」的分辨率`, true);
+    }
+  } catch (err) {
+    toast(`探测「${c.name}」失败: ${err.message}`, true);
+  }
+}
 
 async function toggleChannel(c) {
   const channelRef = c.key || c.id;
   const updated = { ...c, enabled: !c.enabled };
-  if (!updated.id || !updated.id.trim()) updated.id = "0";
-  await api("channels/" + encodeURIComponent(channelRef), "PUT", updated);
+  if (!updated.id || !updated.id.trim()) updated.id = '0';
+  await api('channels/' + encodeURIComponent(channelRef), 'PUT', updated);
   c.enabled = !c.enabled;
   renderChannels();
   fillEPGChannels();
   toast(c.enabled ? `已启用 ${c.name}` : `已停用 ${c.name}`);
 }
 
-function toIgmpUrl(rawUrl) {
-  if (!rawUrl) return '';
-  return rawUrl.replace(/^(?:rtp|udp):\/\//i, 'igmp://');
-}
-
 function renderChannels() {
   $('count-total').textContent = channels.length;
   $('count-enabled').textContent = channels.filter(c => c.enabled).length;
-  $('count-unknown').textContent = channels.filter(unknown).length;
+  $('count-unknown').textContent = channels.filter(isUnknownChannel).length;
+  syncStatCardActive();
 
-  const query = $('search').value.toLowerCase(), filter = $('channel-filter').value;
+  const rawQuery = $('search').value;
+  if ($('search-clear')) $('search-clear').hidden = rawQuery.length === 0;
+  const query = rawQuery.trim().toLowerCase();
+  const filter = $('channel-filter').value;
   const selectedGroup = filter.startsWith('group:') ? filter.slice(6) : null;
+
   const filtered = channels.filter(c => {
-    const displayUrl = toIgmpUrl(c.url);
-    const textMatch = `${c.name} ${c.group} ${c.url} ${displayUrl} ${c.resolution || ''}`.toLowerCase().includes(query);
-    if (!textMatch) return false;
+    if (query) {
+      const displayUrl = toIgmpUrl(c.url);
+      const haystack = `${c.name} ${c.id || ''} ${c.operator_id || ''} ${c.group || ''} ${c.url || ''} ${displayUrl} ${c.resolution || ''}`.toLowerCase();
+      if (!haystack.includes(query)) return false;
+    }
     if (selectedGroup !== null) return (c.group || '未分组') === selectedGroup;
-    if (filter === 'unknown') return unknown(c);
+    if (filter === 'unknown') return isUnknownChannel(c);
     if (filter === 'enabled') return c.enabled;
     if (filter === 'disabled') return !c.enabled;
     return true;
   });
-  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  page = Math.min(page, pages - 1);
 
-  $('channel-rows').replaceChildren();
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  page = Math.min(Math.max(0, page), pages - 1);
+
+  const tbody = $('channel-rows');
+  const frag = document.createDocumentFragment();
   $('empty').hidden = filtered.length !== 0;
   $('result-count').textContent = `共 ${filtered.length} 个频道`;
   $('page-label').textContent = `${page + 1} / ${pages}`;
   $('prev-page').disabled = page === 0;
   $('next-page').disabled = page >= pages - 1;
 
-  for (const c of filtered.slice(page * pageSize, (page + 1) * pageSize)) {
+  for (const c of filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)) {
     const row = document.createElement('tr');
     row.className = c.enabled ? 'channel-row-enabled' : 'channel-row-disabled';
     const cell = (cls) => {
@@ -436,9 +578,9 @@ function renderChannels() {
       return td;
     };
 
-    const isLocal = c.logo && (c.logo.startsWith('/logos/') || c.logo.startsWith('/api/panel/logos/local/'));
+    const isLocal = isLocalLogoPath(c.logo);
 
-    // 1. 名称 (Name) - 第一列，左对齐
+    // 1. 名称
     const nameTd = cell('col-name');
     const nameWrapper = document.createElement('div');
     nameWrapper.className = 'channel-name-wrapper';
@@ -453,7 +595,6 @@ function renderChannels() {
 
     const nameTags = document.createElement('div');
     nameTags.className = 'channel-name-tags';
-
     if (isLocal) {
       const localBadge = document.createElement('span');
       localBadge.className = 'badge-local';
@@ -461,7 +602,6 @@ function renderChannels() {
       localBadge.title = '本地台标';
       nameTags.append(localBadge);
     }
-
     if (c.suggestion) {
       const sugSpan = document.createElement('span');
       sugSpan.className = 'channel-sug-tag';
@@ -474,10 +614,9 @@ function renderChannels() {
     if (nameTags.childNodes.length) nameWrapper.append(nameTags);
     nameTd.append(nameWrapper);
 
-    // 2. 频道号 (Digital ID) - 第二列，单独一列在名称后面，居中，点击直接输入
+    // 2. 频道号 (点击直接行内编辑)
     const idTd = cell('col-id');
     const isInvalid = isInvalidID(c.id);
-
     const idBadge = document.createElement('span');
     idBadge.className = 'badge-channel-id clickable' + (isInvalid ? ' is-invalid' : '');
     idBadge.textContent = isInvalid ? '--' : String(c.id);
@@ -504,14 +643,13 @@ function renderChannels() {
         }
         try {
           const channelRef = c.key || c.id;
-          const updated = { ...c, id: finalId };
-          await api('channels/' + encodeURIComponent(channelRef), 'PUT', updated);
+          await api('channels/' + encodeURIComponent(channelRef), 'PUT', { ...c, id: finalId });
           c.id = finalId;
           renderChannels();
           fillEPGChannels();
           toast(`已更新频道号: ${c.name} -> ${finalId}`);
         } catch (err) {
-          toast('更新失败: ' + err.message);
+          toast('更新失败: ' + err.message, true);
           renderChannels();
         }
       };
@@ -531,10 +669,9 @@ function renderChannels() {
       input.focus();
       input.select();
     };
-
     idTd.append(idBadge);
 
-    // 3. 台标 (Logo) - 第三列，居中
+    // 3. 台标 (点击上传本地台标)
     const logoTd = cell('col-logo');
     const logoBox = document.createElement('div');
     logoBox.className = 'channel-logo-box has-logo-upload';
@@ -565,7 +702,7 @@ function renderChannels() {
     };
     logoTd.append(logoBox);
 
-    // 4. 状态 (Status: interactive toggle button) - 第四列，居中
+    // 4. 状态切换
     const statusTd = cell('col-status');
     const statusBtn = document.createElement('button');
     statusBtn.type = 'button';
@@ -582,7 +719,7 @@ function renderChannels() {
     statusBtn.append(statusDot, statusText);
     statusTd.append(statusBtn);
 
-    // 5. 分辨率 (Resolution) - 第五列，居中
+    // 5. 分辨率
     const resTd = cell('col-res');
     if (c.resolution) {
       const resSpan = document.createElement('span');
@@ -597,14 +734,14 @@ function renderChannels() {
       resTd.append(noRes);
     }
 
-    // 6. 分组 (Group) - 第六列，居中
+    // 6. 分组
     const groupTd = cell('col-group');
     const groupBadge = document.createElement('span');
     groupBadge.className = 'badge';
     groupBadge.textContent = c.group || '未分组';
     groupTd.append(groupBadge);
 
-    // 7. 内网源地址 (URL, 统一为 igmp://) - 第七列，居中
+    // 7. 内网源地址 (点击复制)
     const urlTd = cell('col-url');
     const displayUrl = toIgmpUrl(c.url);
     const urlText = document.createElement('span');
@@ -614,7 +751,7 @@ function renderChannels() {
     urlTd.onclick = () => copyText(displayUrl, '已复制源地址: ' + displayUrl);
     urlTd.append(urlText);
 
-    // 8. 操作 (Actions) - 第八列，居中对齐，紧凑排列
+    // 8. 操作图标按钮
     const actionTd = cell('col-actions');
     const actions = document.createElement('div');
     actions.className = 'table-action-icons';
@@ -622,8 +759,9 @@ function renderChannels() {
     const createActionBtn = (title, iconSvg, onClick, extraClass = '') => {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'action-icon-btn ' + extraClass;
+      btn.className = ('action-icon-btn ' + extraClass).trim();
       btn.title = title;
+      btn.setAttribute('aria-label', title);
       btn.innerHTML = iconSvg;
       btn.onclick = (e) => {
         e.stopPropagation();
@@ -641,25 +779,27 @@ function renderChannels() {
       createActionBtn('智能识别建议', '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>', () => identify(c), 'btn-ai')
     );
     actionTd.append(actions);
-
-    $('channel-rows').append(row);
+    frag.append(row);
   }
+  tbody.replaceChildren(frag);
 }
 
 function fillChannelFilterGroups() {
   const select = $('channel-filter');
   if (!select) return;
   const currentVal = select.value;
-  const oldOpt = select.querySelector('optgroup');
-  if (oldOpt) oldOpt.remove();
+  select.querySelector('optgroup')?.remove();
 
-  const groups = [...new Set(channels.map(c => c.group || '未分组'))].filter(Boolean);
-  if (groups.length === 0) return;
+  const groupCounts = new Map();
+  for (const c of channels) {
+    const g = c.group || '未分组';
+    groupCounts.set(g, (groupCounts.get(g) || 0) + 1);
+  }
+  if (groupCounts.size === 0) return;
 
   const optgroup = document.createElement('optgroup');
   optgroup.label = '按分组筛选';
-  for (const g of groups) {
-    const count = channels.filter(c => (c.group || '未分组') === g).length;
+  for (const [g, count] of groupCounts.entries()) {
     const opt = document.createElement('option');
     opt.value = 'group:' + g;
     opt.textContent = `${g} (${count})`;
@@ -676,46 +816,68 @@ async function loadChannels() {
   fillChannelFilterGroups();
   renderChannels();
   fillEPGChannels();
-  if (typeof renderGroupOrderList === 'function') renderGroupOrderList();
-  if (typeof updateGroupChannelSelect === 'function') updateGroupChannelSelect();
+  renderGroupOrderList();
+  updateGroupChannelSelect();
 }
 
 for (const id of ['search', 'channel-filter']) {
   $(id).addEventListener('input', () => { page = 0; renderChannels(); });
 }
+$('search-clear')?.addEventListener('click', () => {
+  $('search').value = '';
+  page = 0;
+  renderChannels();
+  $('search').focus();
+});
 $('prev-page').onclick = () => { page--; renderChannels(); };
 $('next-page').onclick = () => { page++; renderChannels(); };
-if ($('copy-m3u-btn')) {
-  $('copy-m3u-btn').onclick = () => copyText(location.origin + '/api/m3u8', '已复制 M3U 订阅地址（原生支持 TiviMate / Televizo 自动回看）');
-}
+$('copy-m3u-btn')?.addEventListener('click', () => {
+  copyText(location.origin + '/api/m3u8', '已复制 M3U 订阅地址（原生支持 TiviMate / Televizo 自动回看）');
+});
+
+/* ==========================================================================
+   Channel Edit Dialog, Matching & Logos
+   ========================================================================== */
 
 function edit(c) {
   editing = c;
+  pendingLogoMatch = null;
+  logoMatchVersion++;
+
   const form = $('channel-form');
   for (const key of ['id', 'operator_id', 'name', 'group', 'logo', 'url', 'unicast_url', 'resolution']) {
     if (form.elements[key]) form.elements[key].value = c?.[key] || '';
   }
-  if (form.elements.url && form.elements.url.value) {
+  if (form.elements.url?.value) {
     form.elements.url.value = toIgmpUrl(form.elements.url.value);
   }
   if (!form.elements.id.value) {
-    form.elements.id.value = "0";
+    form.elements.id.value = '0';
   }
   if (c?.logo_automatic) form.elements.logo.value = '';
   form.elements.enabled.checked = c ? c.enabled : true;
   form.elements.catchup_days.value = c?.catchup_days || 0;
+
   $('dialog-title').textContent = c ? '编辑频道' : '添加频道';
   $('channel-error').textContent = '';
   if ($('match-candidates-box')) $('match-candidates-box').hidden = true;
+  if ($('logo-match-result')) $('logo-match-result').hidden = true;
+  if ($('logo-match-image')) {
+    $('logo-match-image').hidden = true;
+    $('logo-match-image').removeAttribute('src');
+  }
   $('suggestion').hidden = !c?.suggestion;
   $('accept-suggestion').hidden = !c?.suggestion?.name;
+
   if (c?.suggestion) {
     const v = c.suggestion;
+    const formatSuggestion = (matchDesc) =>
+      `建议：${v.name || '无法确定'}${matchDesc} / ${v.group || '未分组'} · 置信度 ${Math.round(v.confidence * 100)}%\n${v.reason}`;
     let matchDesc = '';
     if (v.matched_id) {
       matchDesc = ` · 匹配台号 ${v.matched_id}${v.matched_name ? ' (' + v.matched_name + ')' : ''}`;
     }
-    $('suggestion').textContent = `建议：${v.name || '无法确定'}${matchDesc} / ${v.group || '未分组'} · 置信度 ${Math.round(v.confidence * 100)}%\n${v.reason}`;
+    $('suggestion').textContent = formatSuggestion(matchDesc);
     if (!v.matched_id && v.name) {
       api('channels/match?name=' + encodeURIComponent(v.name)).then(res => {
         if (res && res.matched && res.id && editing === c) {
@@ -724,11 +886,12 @@ function edit(c) {
           v.matched_operator_id = res.operator_id;
           v.matched_group = res.group;
           const updatedMatch = ` · 匹配台号 ${res.id}${res.name ? ' (' + res.name + ')' : ''}${v.resolution ? ' · 分辨率 ' + v.resolution : ''}`;
-          $('suggestion').textContent = `建议：${v.name || '无法确定'}${updatedMatch} / ${v.group || '未分组'} · 置信度 ${Math.round(v.confidence * 100)}%\n${v.reason}`;
+          $('suggestion').textContent = formatSuggestion(updatedMatch);
         }
       }).catch(() => {});
     }
   }
+
   if ($('logo-file-input')) $('logo-file-input').value = '';
   $('logo-preview-box')?.classList.remove('is-dragover');
   fillGroupOptions();
@@ -737,7 +900,8 @@ function edit(c) {
 }
 
 function fillGroupOptions() {
-  const select = $('existing-group'), current = $('channel-group').value;
+  const select = $('existing-group');
+  const current = $('channel-group').value;
   select.replaceChildren(new Option('未分组', ''));
   const groups = [...new Set([...channels.map(c => c.group), current].filter(g => g && g.trim()))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
   for (const group of groups) select.append(new Option(group, group));
@@ -760,40 +924,63 @@ $('existing-group').onchange = () => {
     $('channel-group').value = select.value;
   }
 };
-$('choose-group').onclick = () => { fillGroupOptions(); $('existing-group').focus(); };
+$('choose-group').onclick = () => {
+  fillGroupOptions();
+  $('existing-group').focus();
+};
 
-let logoPreviewTimer;
+let logoPreviewTimer = null;
 function updateLogoPreview() {
   clearTimeout(logoPreviewTimer);
-  const img = $('logo-preview'), status = $('logo-status'), custom = $('channel-logo').value.trim(), value = custom || (editing?.logo_automatic ? editing.logo : '');
+  const img = $('logo-preview');
+  const statusEl = $('logo-status');
+  const custom = $('channel-logo').value.trim();
+  const value = custom || (editing?.logo_automatic ? editing.logo : '');
   img.onload = img.onerror = null;
   img.hidden = true;
   img.removeAttribute('src');
-  if (!value) { status.textContent = '未设置台标（可点击此处或拖拽图片上传本地台标）'; return; }
-  const isLocal = value.startsWith('/logos/') || value.startsWith('/api/panel/logos/local/');
-  if (!isLocal && !/^https?:\/\//i.test(value)) { status.textContent = '请输入 HTTP(S) 图片地址或本地台标路径（也可点击上传）'; return; }
-  status.textContent = '正在加载台标…';
-  img.onload = () => { img.hidden = false; status.textContent = isLocal ? '已加载本地台标（点击可更换）' : (custom ? '自定义台标（点击可更换）' : '自动匹配台标（点击可更换）'); };
-  img.onerror = () => { img.hidden = true; status.textContent = '台标加载失败，请检查图片地址（点击可重新上传）'; };
+  if (!value) {
+    statusEl.textContent = '未设置台标（可点击此处或拖拽图片上传本地台标）';
+    return;
+  }
+  const isLocal = isLocalLogoPath(value);
+  if (!isLocal && !/^https?:\/\//i.test(value)) {
+    statusEl.textContent = '请输入 HTTP(S) 图片地址或本地台标路径（也可点击上传）';
+    return;
+  }
+  statusEl.textContent = '正在加载台标…';
+  img.onload = () => {
+    img.hidden = false;
+    statusEl.textContent = isLocal
+      ? '已加载本地台标（点击可更换）'
+      : (custom ? '自定义台标（点击可更换）' : '自动匹配台标（点击可更换）');
+  };
+  img.onerror = () => {
+    img.hidden = true;
+    statusEl.textContent = '台标加载失败，请检查图片地址（点击可重新上传）';
+  };
   img.src = value;
 }
 
-$('channel-logo').oninput = () => { clearTimeout(logoPreviewTimer); logoPreviewTimer = setTimeout(updateLogoPreview, 400); };
+$('channel-logo').oninput = () => {
+  clearTimeout(logoPreviewTimer);
+  logoPreviewTimer = setTimeout(updateLogoPreview, 400);
+};
 $('channel-logo').onchange = updateLogoPreview;
 $('new-channel').onclick = () => edit(null);
+
 $('accept-suggestion').onclick = async () => {
   const form = $('channel-form');
   const v = editing?.suggestion;
   if (!v) return;
-  const nameToUse = (v.name && v.name.trim().length > 0 && !/^[a-z0-9\-_+ ]+$/i.test(v.name)) ? v.name : (v.matched_name || v.name);
+  const nameToUse = (v.name && v.name.trim().length > 0 && !/^[a-z0-9\-_+ ]+$/i.test(v.name))
+    ? v.name
+    : (v.matched_name || v.name);
   form.elements.name.value = nameToUse;
   form.elements.group.value = v.matched_group || v.group || '';
-  if (v.matched_id) {
-    form.elements.id.value = v.matched_id;
-  }
-  if (v.matched_operator_id) {
-    form.elements.operator_id.value = v.matched_operator_id;
-  }
+  if (v.matched_id) form.elements.id.value = v.matched_id;
+  if (v.matched_operator_id) form.elements.operator_id.value = v.matched_operator_id;
+
   if (!v.matched_id && (v.name || form.elements.name.value)) {
     try {
       const match = await api('channels/match?name=' + encodeURIComponent(v.name || form.elements.name.value));
@@ -803,95 +990,77 @@ $('accept-suggestion').onclick = async () => {
         if (match.name && !v.name) form.elements.name.value = match.name;
         if (match.group && !form.elements.group.value) form.elements.group.value = match.group;
       }
-    } catch (e) {}
+    } catch (_) {}
   }
-  if (editing?.suggestion?.resolution) { $('channel-form').elements.resolution.value = editing.suggestion.resolution; }
+  if (v.resolution) form.elements.resolution.value = v.resolution;
   fillGroupOptions();
   $('match-logo').click();
 };
 
-let currentCandidates = [];
-let currentMatchQuery = '';
-
-function renderMatchCandidates(candidates, query) {
+function renderMatchCandidates(candidates) {
   const box = $('match-candidates-box');
   const list = $('match-candidates-list');
   const count = $('match-candidates-count');
   if (!box || !list) return;
-  list.innerHTML = '';
+  list.replaceChildren();
   count.textContent = `共 ${candidates.length} 个候选`;
 
   candidates.forEach((cand, idx) => {
     const item = document.createElement('label');
-    item.className = 'candidate-item';
-    item.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:6px 10px; border-radius:6px; cursor:pointer; background:var(--bg, #f8fafc); border:1px solid var(--line, #e2e8f0); font-size:12px; transition:all 0.15s;';
-    item.onmouseenter = () => { item.style.borderColor = 'var(--primary, #2563eb)'; };
-    item.onmouseleave = () => {
-      const r = item.querySelector('input[type="radio"]');
-      if (!r || !r.checked) item.style.borderColor = 'var(--line, #e2e8f0)';
-    };
+    item.className = 'candidate-item' + (idx === 0 ? ' is-selected' : '');
 
     const left = document.createElement('div');
-    left.style.cssText = 'display:flex; align-items:center; gap:8px; flex-wrap:wrap;';
+    left.className = 'candidate-item-left';
 
     const radio = document.createElement('input');
     radio.type = 'radio';
     radio.name = 'match_candidate_option';
-    radio.value = idx;
+    radio.value = String(idx);
     radio.checked = idx === 0;
-    radio.style.margin = '0';
     radio.onchange = () => {
-      list.querySelectorAll('.candidate-item').forEach(it => it.style.borderColor = 'var(--line, #e2e8f0)');
-      item.style.borderColor = 'var(--primary, #2563eb)';
+      list.querySelectorAll('.candidate-item').forEach(it => it.classList.remove('is-selected'));
+      item.classList.add('is-selected');
     };
 
     const badge = document.createElement('span');
-    badge.className = 'badge';
+    badge.className = 'badge mono';
     badge.textContent = `台号 ${cand.id}`;
-    badge.style.cssText = 'font-family:monospace; font-weight:600; padding:1px 6px;';
 
     const name = document.createElement('strong');
     name.textContent = cand.name;
 
-    left.appendChild(radio);
-    left.appendChild(badge);
-    left.appendChild(name);
+    left.append(radio, badge, name);
 
     if (cand.operator_id) {
-      const op = document.createElement('span');
+      const op = document.createElement('small');
       op.className = 'muted';
-      op.style.fontSize = '11px';
       op.textContent = `(${cand.operator_id})`;
-      left.appendChild(op);
+      left.append(op);
     }
     if (cand.group) {
-      const grp = document.createElement('span');
+      const grp = document.createElement('small');
       grp.className = 'muted';
-      grp.style.fontSize = '11px';
       grp.textContent = `[${cand.group}]`;
-      left.appendChild(grp);
+      left.append(grp);
     }
     if (cand.is_saved) {
       const savedBadge = document.createElement('span');
-      savedBadge.className = 'badge';
-      savedBadge.style.cssText = 'background:#e6f4ea; color:#137333; font-size:10px; padding:1px 5px;';
+      savedBadge.className = 'badge badge-saved-mapping';
       savedBadge.textContent = '已保存映射';
-      left.appendChild(savedBadge);
+      left.append(savedBadge);
     }
 
     const right = document.createElement('small');
     right.className = 'muted';
     right.textContent = cand.is_saved ? '关键词优先' : `匹配度 ${cand.score}%`;
 
-    item.appendChild(left);
-    item.appendChild(right);
-
+    item.append(left, right);
     item.ondblclick = () => {
       radio.checked = true;
+      radio.dispatchEvent(new Event('change'));
       $('apply-candidate-btn').click();
     };
-
-    list.appendChild(item);
+    list.append(item);
   });
 
   box.hidden = false;
@@ -909,10 +1078,17 @@ $('match-channel-id').onclick = async () => {
     const res = await api('channels/match?name=' + encodeURIComponent(query));
     if (res && res.candidates && res.candidates.length > 0) {
       currentCandidates = res.candidates;
-      renderMatchCandidates(res.candidates, query);
+      renderMatchCandidates(res.candidates);
     } else if (res && res.matched && res.id) {
-      currentCandidates = [{ id: res.id, name: res.name, operator_id: res.operator_id, group: res.group, score: 100, is_saved: res.is_saved }];
-      renderMatchCandidates(currentCandidates, query);
+      currentCandidates = [{
+        id: res.id,
+        name: res.name,
+        operator_id: res.operator_id,
+        group: res.group,
+        score: 100,
+        is_saved: res.is_saved,
+      }];
+      renderMatchCandidates(currentCandidates);
     } else {
       if ($('match-candidates-box')) $('match-candidates-box').hidden = true;
       toast(`未在已知频道中匹配到「${query}」的台号`, true);
@@ -920,66 +1096,56 @@ $('match-channel-id').onclick = async () => {
   });
 };
 
-if ($('apply-candidate-btn')) {
-  $('apply-candidate-btn').onclick = async () => {
-    const form = $('channel-form');
-    const selectedRadio = document.querySelector('input[name="match_candidate_option"]:checked');
-    if (!selectedRadio) {
-      toast('请先选择一个候选频道', true);
-      return;
+$('apply-candidate-btn')?.addEventListener('click', async () => {
+  const form = $('channel-form');
+  const selectedRadio = document.querySelector('input[name="match_candidate_option"]:checked');
+  if (!selectedRadio) {
+    toast('请先选择一个候选频道', true);
+    return;
+  }
+  const cand = currentCandidates[Number(selectedRadio.value)];
+  if (!cand) return;
+
+  form.elements.id.value = cand.id;
+  if (cand.operator_id) form.elements.operator_id.value = cand.operator_id;
+  if (!form.elements.name.value) form.elements.name.value = cand.name;
+  if (cand.group && !form.elements.group.value) {
+    form.elements.group.value = cand.group;
+    fillGroupOptions();
+  }
+
+  const query = currentMatchQuery || form.elements.name.value.trim();
+  const shouldSave = $('save-mapping-check')?.checked;
+  if (shouldSave && query) {
+    try {
+      await api('mappings', 'POST', {
+        keyword: query,
+        target_id: cand.id,
+        target_name: cand.name,
+        operator_id: cand.operator_id || '',
+        group: cand.group || '',
+      });
+      toast(`已应用台号 ${cand.id} (${cand.name}) 并保存「${query}」映射`);
+      loadMappings();
+    } catch (e) {
+      toast(`已应用台号 ${cand.id} (${cand.name})，保存映射失败: ${e.message}`, true);
     }
-    const cand = currentCandidates[Number(selectedRadio.value)];
-    if (!cand) return;
+  } else {
+    toast(`已应用台号 ${cand.id} (${cand.name})`);
+  }
+  $('match-candidates-box').hidden = true;
+});
 
-    form.elements.id.value = cand.id;
-    if (cand.operator_id) {
-      form.elements.operator_id.value = cand.operator_id;
-    }
-    if (!form.elements.name.value) {
-      form.elements.name.value = cand.name;
-    }
-    if (cand.group && !form.elements.group.value) {
-      form.elements.group.value = cand.group;
-      fillGroupOptions();
-    }
+$('close-candidates-btn')?.addEventListener('click', () => {
+  if ($('match-candidates-box')) $('match-candidates-box').hidden = true;
+});
 
-    const query = currentMatchQuery || form.elements.name.value.trim();
-    const shouldSave = $('save-mapping-check')?.checked;
-
-    if (shouldSave && query) {
-      try {
-        await api('mappings', 'POST', {
-          keyword: query,
-          target_id: cand.id,
-          target_name: cand.name,
-          operator_id: cand.operator_id || '',
-          group: cand.group || '',
-        });
-        toast(`已应用台号 ${cand.id} (${cand.name}) 并保存「${query}」映射`);
-        loadMappings();
-      } catch (e) {
-        toast(`已应用台号 ${cand.id} (${cand.name})，保存映射失败: ${e.message}`, true);
-      }
-    } else {
-      toast(`已应用台号 ${cand.id} (${cand.name})`);
-    }
-
-    $('match-candidates-box').hidden = true;
-  };
-}
-
-if ($('close-candidates-btn')) {
-  $('close-candidates-btn').onclick = () => {
-    if ($('match-candidates-box')) $('match-candidates-box').hidden = true;
-  };
-}
-
-$('channel-form').onsubmit = async event => {
+$('channel-form').onsubmit = async (event) => {
   event.preventDefault();
   const form = event.target;
   const c = Object.fromEntries(new FormData(form));
   c.operator_id = (c.operator_id || '').trim();
-  c.id = (c.id || '').trim() || "0";
+  c.id = (c.id || '').trim() || '0';
   c.enabled = form.elements.enabled.checked;
   c.catchup_days = Number(form.elements.catchup_days.value);
   if (editing?.key) c.key = editing.key;
@@ -998,7 +1164,6 @@ $('channel-form').onsubmit = async event => {
   });
 };
 
-let snapshotURL;
 async function snapshot(c) {
   $('snapshot-image').hidden = true;
   $('snapshot-status').textContent = '正在截取 ' + c.name + '，最多等待 20 秒…';
@@ -1028,17 +1193,23 @@ async function identify(c) {
 $('show-unknown').onclick = () => {
   $('channel-filter').value = 'unknown';
   page = 0;
-  renderChannels();
-  switchChannelView('list');
   tab('channels');
+  switchChannelView('list');
+  renderChannels();
 };
 
-const states = { idle: '待命', running: '运行中', stopping: '正在停止', completed: '已完成', cancelled: '已停止', failed: '失败' };
+/* ==========================================================================
+   Scan, Refresh & Initialization
+   ========================================================================== */
 
 async function status() {
+  clearTimeout(statusPollTimer);
+  statusPollTimer = null;
   const value = await api('status');
-  const scan = value.scan, refresh = value.refresh;
-  $('scan-state').textContent = states[scan.state] || scan.state;
+  const scan = value.scan;
+  const refresh = value.refresh;
+
+  $('scan-state').textContent = JOB_STATES[scan.state] || scan.state;
   $('scan-progress').max = scan.total || 1;
   $('scan-progress').value = scan.done;
   $('scan-count').textContent = `已探测 ${scan.done} / ${scan.total}，发现可用流 ${scan.found}`;
@@ -1049,18 +1220,33 @@ async function status() {
   $('refresh-status').textContent = {
     running: '正在从运营商门户同步频道…',
     completed: '最近一次同步完成',
-    failed: '最近一次同步失败：' + refresh.error
+    failed: '最近一次同步失败：' + refresh.error,
   }[refresh.state] || '';
-  if (['running', 'stopping'].includes(scan.state) || refresh.state === 'running') setTimeout(status, 2000);
+
+  if (['running', 'stopping'].includes(scan.state) || refresh.state === 'running') {
+    statusPollTimer = setTimeout(() => { status().catch(() => {}); }, 2000);
+  }
   if (lastScanState === 'running' && scan.state !== 'running') await loadChannels();
   if (lastRefreshState === 'running' && refresh.state !== 'running') await loadChannels();
   lastScanState = scan.state;
   lastRefreshState = refresh.state;
 }
 
-$('start-scan').onclick = () => busy($('start-scan'), async () => { await saveSettings(); await api('scan/start', 'POST'); await status(); toast('组播扫描已启动'); });
-$('stop-scan').onclick = () => busy($('stop-scan'), async () => { await api('scan/stop', 'POST'); await status(); });
-$('sync').onclick = () => busy($('sync'), async () => { await api('refresh', 'POST'); await status(); toast('运营商频道同步已启动'); });
+$('start-scan').onclick = () => busy($('start-scan'), async () => {
+  await saveSettings();
+  await api('scan/start', 'POST');
+  await status();
+  toast('组播扫描已启动');
+});
+$('stop-scan').onclick = () => busy($('stop-scan'), async () => {
+  await api('scan/stop', 'POST');
+  await status();
+});
+$('sync').onclick = () => busy($('sync'), async () => {
+  await api('refresh', 'POST');
+  await status();
+  toast('运营商频道同步已启动');
+});
 
 async function init() {
   try {
@@ -1068,11 +1254,13 @@ async function init() {
     await loadChannels();
     await loadMappings();
     await status();
+    await checkProbeStatus();
     $('login').hidden = true;
     $('workspace').hidden = false;
   } catch (e) {
     $('login').hidden = false;
     $('workspace').hidden = true;
+    throw e;
   }
 }
 
@@ -1080,11 +1268,12 @@ $('reload').onclick = () => busy($('reload'), async () => {
   await loadChannels();
   await loadMappings();
   await status();
+  await checkProbeStatus();
   if (!$('tab-epg').hidden) await epgStatus();
   toast('数据已刷新');
 });
 
-$('login-form').onsubmit = async e => {
+$('login-form').onsubmit = async (e) => {
   e.preventDefault();
   sessionStorage.setItem('iptv-token', $('token').value.trim());
   $('login-error').textContent = '';
@@ -1095,75 +1284,98 @@ $('login-form').onsubmit = async e => {
   }
 };
 
-let playing;
+/* ==========================================================================
+   Playback Dialog
+   ========================================================================== */
+
 function play(c) {
   playing = c;
   $('play-title').textContent = c.name;
-  $('play-mode').value = settings.forward.play_mode || 'multicast';
+  $('play-mode').value = settings?.forward?.play_mode || 'multicast';
   $('play-replay').checked = false;
-  const local = date => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  $('play-start').value = local(new Date(Date.now() - 3600000));
-  $('play-end').value = local(new Date());
+  const toLocalInput = (date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  $('play-start').value = toLocalInput(new Date(Date.now() - 3600000));
+  $('play-end').value = toLocalInput(new Date());
   updatePlayAddress();
   $('play-dialog').showModal();
 }
 
 function updatePlayAddress() {
-  const mode = $('play-mode').value, replay = $('play-replay').checked;
+  if (!playing) return;
+  const mode = $('play-mode').value;
+  const replay = $('play-replay').checked;
   $('play-start-label').hidden = $('play-end-label').hidden = !replay;
-  let address = playing.play_url, notice = '';
-  if (mode === 'http' && !playing.operator_id) notice = '该频道未关联运营商 HTTP 源';
-  else if (mode === 'unicast' && !playing.unicast_url) notice = '该频道未配置单播源';
-  else if (replay && !playing.catchup_days) notice = '该频道未启用回看';
-  else if (mode === 'multicast' && replay) notice = '回看请选择 HTTP / HLS 或单播方式';
-  else if (mode !== 'multicast') {
+
+  let address = playing.play_url || '';
+  let notice = '';
+
+  if (mode === 'http' && !playing.operator_id) {
+    notice = '该频道未关联运营商 HTTP 源';
+  } else if (mode === 'unicast' && !playing.unicast_url) {
+    notice = '该频道未配置单播源';
+  } else if (replay && !playing.catchup_days) {
+    notice = '该频道未启用回看';
+  } else if (mode === 'multicast' && replay) {
+    notice = '回看请选择 HTTP / HLS 或单播方式';
+  } else if (mode !== 'multicast') {
     const u = new URL('/api/play', location.origin);
-    u.searchParams.set('id', playing.id);
+    const playRef = playing.operator_id || playing.key || playing.id;
+    u.searchParams.set('id', playRef);
     u.searchParams.set('mode', mode);
     if (replay) {
-      const start = new Date($('play-start').value).getTime() / 1000, end = new Date($('play-end').value).getTime() / 1000;
-      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) notice = '请选择有效的开始和结束时间';
-      u.searchParams.set('start', String(start));
-      u.searchParams.set('end', String(end));
+      const start = Math.floor(new Date($('play-start').value).getTime() / 1000);
+      const end = Math.floor(new Date($('play-end').value).getTime() / 1000);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        notice = '请选择有效的开始和结束时间';
+      } else {
+        u.searchParams.set('start', String(start));
+        u.searchParams.set('end', String(end));
+      }
     }
     address = u.href;
   } else {
-    const u = new URL(playing.url);
-    if (['igmp:', 'rtp:', 'udp:'].includes(u.protocol) && settings.forward.address) {
-      const f = new URL('http://' + settings.forward.address + '/' + settings.forward.protocol + '/' + u.host + u.search);
-      if (!f.searchParams.get('fcc') && settings.forward.fcc) f.searchParams.set('fcc', settings.forward.fcc);
-      address = f.href;
-    } else address = playing.url;
+    try {
+      const u = new URL(playing.url);
+      if (['igmp:', 'rtp:', 'udp:'].includes(u.protocol) && settings?.forward?.address) {
+        const f = new URL('http://' + settings.forward.address + '/' + settings.forward.protocol + '/' + u.host + u.search);
+        if (!f.searchParams.get('fcc') && settings.forward.fcc) {
+          f.searchParams.set('fcc', settings.forward.fcc);
+        }
+        address = f.href;
+      } else {
+        address = playing.url;
+      }
+    } catch (_) {
+      address = playing.url || '';
+    }
   }
-  $('play-notice').textContent = notice || (replay ? '可回看 ' + playing.catchup_days + ' 天；HTTP 回看按运营商节目边界结束。' : '');
+
+  $('play-notice').textContent = notice || (replay ? `可回看 ${playing.catchup_days} 天；HTTP 回看按运营商节目边界结束。` : '');
   $('play-address').textContent = notice ? '' : address;
-  
+
   const hasAddr = !notice && Boolean(address);
-  const playerButtons = ['play-android', 'play-potplayer', 'play-vlc', 'play-iina', 'play-download-m3u', 'play-copy', 'play-open'];
-  playerButtons.forEach(id => {
+  for (const id of ['play-android', 'play-potplayer', 'play-vlc', 'play-iina', 'play-download-m3u', 'play-copy', 'play-open']) {
     const el = $(id);
     if (el) el.hidden = !hasAddr;
-  });
+  }
 
   if (hasAddr) {
     $('play-open').href = address;
 
-    // Android Intent: standard android.intent.action.VIEW intent for video players (MX Player, VLC, system players)
-    const noScheme = address.replace(/^https?:\/\//i, '');
-    const scheme = address.startsWith('https://') ? 'https' : 'http';
+    let scheme = 'http';
+    let noScheme = address;
+    const schemeMatch = address.match(/^([a-z][a-z0-9+.-]*):\/\/(.*)$/i);
+    if (schemeMatch) {
+      scheme = schemeMatch[1].toLowerCase();
+      noScheme = schemeMatch[2];
+    }
     const androidIntent = `intent://${noScheme}#Intent;action=android.intent.action.VIEW;type=video/*;scheme=${scheme};end`;
     if ($('play-android')) {
       $('play-android').href = androidIntent;
       $('play-android').setAttribute('data-intent', androidIntent);
     }
-
-    // Windows PotPlayer
     if ($('play-potplayer')) $('play-potplayer').href = `potplayer://${address}`;
-
-    // Cross-platform VLC
     if ($('play-vlc')) $('play-vlc').href = `vlc://${address}`;
-
-    // macOS IINA
     if ($('play-iina')) $('play-iina').href = `iina://weblink?url=${encodeURIComponent(address)}`;
   } else {
     $('play-open').removeAttribute('href');
@@ -1171,9 +1383,9 @@ function updatePlayAddress() {
       $('play-android').removeAttribute('href');
       $('play-android').removeAttribute('data-intent');
     }
-    if ($('play-potplayer')) $('play-potplayer').removeAttribute('href');
-    if ($('play-vlc')) $('play-vlc').removeAttribute('href');
-    if ($('play-iina')) $('play-iina').removeAttribute('href');
+    $('play-potplayer')?.removeAttribute('href');
+    $('play-vlc')?.removeAttribute('href');
+    $('play-iina')?.removeAttribute('href');
   }
 }
 
@@ -1181,54 +1393,52 @@ for (const id of ['play-mode', 'play-replay', 'play-start', 'play-end']) {
   $(id).onchange = updatePlayAddress;
 }
 
-if ($('play-android')) {
-  $('play-android').onclick = (e) => {
-    const intentUrl = $('play-android').getAttribute('data-intent');
-    if (intentUrl) {
-      window.location.href = intentUrl;
-      e.preventDefault();
-    }
-  };
-}
+$('play-android')?.addEventListener('click', (e) => {
+  const intentUrl = $('play-android').getAttribute('data-intent');
+  if (intentUrl) {
+    window.location.href = intentUrl;
+    e.preventDefault();
+  }
+});
 
-if ($('play-copy')) {
-  $('play-copy').onclick = async () => {
-    const addr = $('play-address').textContent;
-    if (!addr) return;
-    try {
-      await navigator.clipboard.writeText(addr);
-      const orig = $('play-copy').textContent;
-      $('play-copy').textContent = '已复制！';
-      setTimeout(() => { $('play-copy').textContent = orig; }, 1800);
-    } catch (_) {
-      prompt('请复制流地址：', addr);
-    }
-  };
-}
+$('play-copy')?.addEventListener('click', async () => {
+  const addr = $('play-address').textContent;
+  if (!addr) return;
+  const ok = await copyText(addr, '流地址已复制到剪贴板');
+  if (ok) {
+    const btn = $('play-copy');
+    const orig = btn.textContent;
+    btn.textContent = '已复制！';
+    setTimeout(() => { btn.textContent = orig; }, 1800);
+  }
+});
 
-if ($('play-download-m3u')) {
-  $('play-download-m3u').onclick = () => {
-    const addr = $('play-address').textContent;
-    if (!addr || !playing) return;
-    const name = playing.name || 'channel';
-    const m3u = `#EXTM3U
-#EXTINF:-1 tvg-name="${name}" tvg-logo="${playing.logo || ''}",${name}
-${addr}
-`;
-    const blob = new Blob([m3u], { type: 'application/x-mpegurl;charset=utf-8' });
-    const u = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = u;
-    a.download = `${name}.m3u`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(u);
-  };
-}
+$('play-download-m3u')?.addEventListener('click', () => {
+  const addr = $('play-address').textContent;
+  if (!addr || !playing) return;
+  const safeName = cleanM3UValue(playing.name || 'channel');
+  let logoUrl = playing.logo || '';
+  if (logoUrl.startsWith('/')) logoUrl = location.origin + logoUrl;
+  const m3u = `#EXTM3U\n#EXTINF:-1 tvg-name="${safeName}" tvg-logo="${cleanM3UValue(logoUrl)}",${safeName}\n${addr}\n`;
+  const blob = new Blob([m3u], { type: 'application/x-mpegurl;charset=utf-8' });
+  const u = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = u;
+  a.download = `${safeName}.m3u`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(u);
+});
+
+/* ==========================================================================
+   Logo Matching, Upload & Batch Localization
+   ========================================================================== */
 
 $('match-logo').onclick = () => busy($('match-logo'), async () => {
-  const form = $('channel-form'), name = form.elements.name.value.trim(), group = form.elements.group.value.trim();
+  const form = $('channel-form');
+  const name = form.elements.name.value.trim();
+  const group = form.elements.group.value.trim();
   if (!name) throw Error('请先填写频道名称');
   const version = ++logoMatchVersion;
   pendingLogoMatch = null;
@@ -1262,7 +1472,8 @@ $('match-logo').onclick = () => busy($('match-logo'), async () => {
 });
 
 $('accept-logo-match').onclick = () => {
-  const form = $('channel-form'), result = pendingLogoMatch;
+  const form = $('channel-form');
+  const result = pendingLogoMatch;
   if (!result) return;
   if (result.channelName !== form.elements.name.value.trim() || result.group !== form.elements.group.value.trim()) {
     toast('频道名称或分组已改变，请重新匹配', true);
@@ -1274,7 +1485,8 @@ $('accept-logo-match').onclick = () => {
 };
 
 $('download-logo-match').onclick = () => busy($('download-logo-match'), async () => {
-  const form = $('channel-form'), result = pendingLogoMatch;
+  const form = $('channel-form');
+  const result = pendingLogoMatch;
   if (!result) return;
   if (result.channelName !== form.elements.name.value.trim() || result.group !== form.elements.group.value.trim()) {
     toast('频道名称或分组已改变，请重新匹配', true);
@@ -1291,7 +1503,7 @@ $('download-current-logo').onclick = () => busy($('download-current-logo'), asyn
   const url = form.elements.logo.value.trim();
   const name = form.elements.name.value.trim();
   if (!url) throw Error('请先输入或匹配台标 URL');
-  if (url.startsWith('/logos/') || url.startsWith('/api/panel/logos/local/')) {
+  if (isLocalLogoPath(url)) {
     toast('当前已经是本地台标：' + url);
     return;
   }
@@ -1316,7 +1528,7 @@ async function uploadLogoFile(file, channelName = '') {
   if (channelName && channelName.trim()) {
     fd.append('name', channelName.trim());
   }
-  return await api('logos/upload', 'POST', fd);
+  return api('logos/upload', 'POST', fd);
 }
 
 async function handleDialogLogoUpload(file) {
@@ -1331,9 +1543,7 @@ async function handleDialogLogoUpload(file) {
     const res = await uploadLogoFile(file, channelName);
     if (res && res.url) {
       form.elements.logo.value = res.url;
-      if (editing) {
-        editing.logo_automatic = false;
-      }
+      if (editing) editing.logo_automatic = false;
       updateLogoPreview();
       toast('台标已成功上传并保存为本地文件：' + res.url);
     }
@@ -1345,25 +1555,19 @@ async function handleDialogLogoUpload(file) {
   }
 }
 
-if ($('upload-logo-btn')) {
-  $('upload-logo-btn').onclick = () => {
-    const input = $('logo-file-input');
-    if (input) {
-      input.value = '';
-      input.click();
-    }
-  };
-}
+$('upload-logo-btn')?.addEventListener('click', () => {
+  const input = $('logo-file-input');
+  if (input) {
+    input.value = '';
+    input.click();
+  }
+});
 
-if ($('logo-file-input')) {
-  $('logo-file-input').onchange = async (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      await handleDialogLogoUpload(file);
-    }
-    e.target.value = '';
-  };
-}
+$('logo-file-input')?.addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  if (file) await handleDialogLogoUpload(file);
+  e.target.value = '';
+});
 
 const logoPreviewBox = $('logo-preview-box');
 if (logoPreviewBox) {
@@ -1374,21 +1578,21 @@ if (logoPreviewBox) {
       input.click();
     }
   };
-  ['dragenter', 'dragover'].forEach(name => {
+  for (const name of ['dragenter', 'dragover']) {
     logoPreviewBox.addEventListener(name, (e) => {
       e.preventDefault();
       e.stopPropagation();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
       logoPreviewBox.classList.add('is-dragover');
     });
-  });
-  ['dragleave', 'dragend'].forEach(name => {
+  }
+  for (const name of ['dragleave', 'dragend']) {
     logoPreviewBox.addEventListener(name, (e) => {
       e.preventDefault();
       e.stopPropagation();
       logoPreviewBox.classList.remove('is-dragover');
     });
-  });
+  }
   logoPreviewBox.addEventListener('drop', async (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -1400,37 +1604,33 @@ if (logoPreviewBox) {
   });
 }
 
-let tableUploadTargetChannel = null;
-const tableLogoInput = $('table-logo-file-input');
-if (tableLogoInput) {
-  tableLogoInput.onchange = async (e) => {
-    const file = e.target.files?.[0];
-    const target = tableUploadTargetChannel;
-    e.target.value = '';
-    tableUploadTargetChannel = null;
-    if (!file || !target) return;
-    try {
-      toast(`正在为「${target.name}」上传并保存本地台标…`);
-      const res = await uploadLogoFile(file, target.name);
-      if (res && res.url) {
-        const channelRef = target.key || target.original_id || target.id;
-        const updated = { ...target, logo: res.url, logo_automatic: false };
-        if (!updated.id || !updated.id.trim()) updated.id = "0";
-        await api('channels/' + encodeURIComponent(channelRef), 'PUT', updated);
-        target.logo = res.url;
-        target.logo_automatic = false;
-        renderChannels();
-        fillEPGChannels();
-        toast(`已成功为「${target.name}」更新本地台标！`);
-      }
-    } catch (err) {
-      toast(`上传台标失败: ${err.message}`, true);
+$('table-logo-file-input')?.addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  const target = tableUploadTargetChannel;
+  e.target.value = '';
+  tableUploadTargetChannel = null;
+  if (!file || !target) return;
+  try {
+    toast(`正在为「${target.name}」上传并保存本地台标…`);
+    const res = await uploadLogoFile(file, target.name);
+    if (res && res.url) {
+      const channelRef = target.key || target.original_id || target.id;
+      const updated = { ...target, logo: res.url, logo_automatic: false };
+      if (!updated.id || !updated.id.trim()) updated.id = '0';
+      await api('channels/' + encodeURIComponent(channelRef), 'PUT', updated);
+      target.logo = res.url;
+      target.logo_automatic = false;
+      renderChannels();
+      fillEPGChannels();
+      toast(`已成功为「${target.name}」更新本地台标！`);
     }
-  };
-}
+  } catch (err) {
+    toast(`上传台标失败: ${err.message}`, true);
+  }
+});
 
 $('batch-download-logos').onclick = () => busy($('batch-download-logos'), async () => {
-  const targets = channels.filter(c => c.logo && (c.logo.startsWith('http://') || c.logo.startsWith('https://')));
+  const targets = channels.filter(c => c.logo && /^https?:\/\//i.test(c.logo));
   if (targets.length === 0) {
     toast('当前频道列表没有使用远程 URL 的台标');
     return;
@@ -1438,7 +1638,8 @@ $('batch-download-logos').onclick = () => busy($('batch-download-logos'), async 
   if (!confirm(`发现 ${targets.length} 个频道的台标为远程 URL，是否开始下载并保存到本地？`)) {
     return;
   }
-  let success = 0, failed = 0;
+  let success = 0;
+  let failed = 0;
   for (let i = 0; i < targets.length; i++) {
     const c = targets[i];
     toast(`正在下载本地台标 (${i + 1}/${targets.length}): ${c.name}...`);
@@ -1448,7 +1649,7 @@ $('batch-download-logos').onclick = () => busy($('batch-download-logos'), async 
       const channelRef = c.key || c.original_id || c.id;
       await api('channels/' + encodeURIComponent(channelRef), 'PUT', updated);
       success++;
-    } catch (e) {
+    } catch (_) {
       failed++;
     }
   }
@@ -1457,7 +1658,7 @@ $('batch-download-logos').onclick = () => busy($('batch-download-logos'), async 
 });
 
 /* ==========================================================================
-   Modern EPG Logic
+   Modern EPG Guide
    ========================================================================== */
 
 function getShanghaiTodayStr() {
@@ -1465,13 +1666,23 @@ function getShanghaiTodayStr() {
     timeZone: 'Asia/Shanghai',
     year: 'numeric',
     month: '2-digit',
-    day: '2-digit'
+    day: '2-digit',
   }).format(new Date());
+}
+
+function getWeekdayFromDateStr(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const utcDay = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][utcDay];
+}
+
+function getValidEPGChannels() {
+  return channels.filter(c => c.enabled && (c.operator_id || (c.source === 'iptv' && !isInvalidID(c.id)) || isValidID(c.id)));
 }
 
 function updateEPGHero() {
   const id = $('epg-channel').value;
-  const c = channels.find(c => (c.key ? c.key === id : c.id === id)) || channels.find(c => c.id === id);
+  const c = channels.find(ch => (ch.key ? ch.key === id : ch.id === id)) || channels.find(ch => ch.id === id);
   if (!c) {
     $('epg-hero-name').textContent = '未选择频道';
     $('epg-hero-group').textContent = '无';
@@ -1488,7 +1699,7 @@ function updateEPGHero() {
   $('epg-hero-group').textContent = c.group || '未分组';
   const opDesc = c.operator_id ? ` · 字母ID: ${c.operator_id}` : '';
   $('epg-hero-meta').textContent = `数字频道: ${c.id}${opDesc} · ${c.operator_id ? '运营商频道' : '自定义频道'}${c.unicast_url ? ' · 单播' : ''}`;
-  
+
   if (c.catchup_days > 0) {
     $('epg-hero-catchup').textContent = `支持 ${c.catchup_days} 天回看`;
     $('epg-hero-catchup').className = 'badge badge-green';
@@ -1499,11 +1710,10 @@ function updateEPGHero() {
 
   const logoImg = $('epg-hero-logo');
   const placeholder = $('epg-hero-placeholder');
-  const isLocalEPGLogo = c.logo && (c.logo.startsWith('/logos/') || c.logo.startsWith('/api/panel/logos/local/'));
-  if (c.logo && (isLocalEPGLogo || /^https?:\/\//i.test(c.logo))) {
-    logoImg.src = c.logo;
+  if (c.logo && (isLocalLogoPath(c.logo) || /^https?:\/\//i.test(c.logo))) {
     logoImg.onload = () => { logoImg.hidden = false; placeholder.hidden = true; };
     logoImg.onerror = () => { logoImg.hidden = true; placeholder.hidden = false; };
+    logoImg.src = c.logo;
   } else {
     logoImg.hidden = true;
     placeholder.hidden = false;
@@ -1522,15 +1732,18 @@ function renderDateRibbon() {
   const todayStr = getShanghaiTodayStr();
   const pastDays = settings?.epg?.past_days ?? 7;
   const futureDays = settings?.epg?.future_days ?? 3;
-
   const now = new Date(todayStr + 'T00:00:00+08:00');
 
   for (let i = -pastDays; i <= futureDays; i++) {
     const d = new Date(now.getTime() + i * 86400000);
-    const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
-    const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()];
+    const dateStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(d);
 
-    let label = weekday;
+    let label = getWeekdayFromDateStr(dateStr);
     if (i === 0) label = '今天';
     else if (i === -1) label = '昨天';
     else if (i === -2) label = '前天';
@@ -1561,15 +1774,15 @@ function renderDateRibbon() {
       renderDateRibbon();
       loadEPG().catch(e => { $('epg-message').textContent = e.message; });
     };
-
     container.append(btn);
   }
 }
 
 function fillEPGChannels() {
-  const select = $('epg-channel'), previous = select.value;
+  const select = $('epg-channel');
+  const previous = select.value;
   select.replaceChildren();
-  const validChannels = channels.filter(c => c.enabled && (c.operator_id || (c.source === 'iptv' && !isInvalidID(c.id)) || isValidID(c.id)));
+  const validChannels = getValidEPGChannels();
   for (const c of validChannels) {
     const label = `${c.name} · 台号:${c.id}` + (c.operator_id ? ` [${c.operator_id}]` : '') + ` (${c.group || '未分组'})`;
     select.append(new Option(label, c.key || c.id));
@@ -1587,7 +1800,7 @@ function fillEPGChannels() {
 
 function switchEPGChannel(direction) {
   const select = $('epg-channel');
-  const validChannels = channels.filter(c => c.enabled && (c.operator_id || (c.source === 'iptv' && !isInvalidID(c.id)) || isValidID(c.id)));
+  const validChannels = getValidEPGChannels();
   if (!validChannels.length) return;
   const currentIdx = validChannels.findIndex(c => (c.key ? c.key === select.value : c.id === select.value));
   let nextIdx = currentIdx + direction;
@@ -1607,8 +1820,10 @@ $('toggle-epg-settings').onclick = () => {
 $('copy-epg-url').onclick = () => copyText($('epg-url').textContent, 'XMLTV 地址已复制到剪贴板');
 
 async function epgStatus() {
+  clearTimeout(epgPollTimer);
+  epgPollTimer = null;
   const v = await api('epg/status');
-  const stateName = states[v.state] || v.state;
+  const stateName = JOB_STATES[v.state] || v.state;
   const timeStr = v.updated_at && !v.updated_at.startsWith('0001') ? new Date(v.updated_at).toLocaleString() : '尚未同步';
 
   $('epg-status').textContent = `${v.backend === 'mysql' ? 'MySQL' : '本地文件'} · ${stateName} · ${v.done}/${v.total} 个频道 · 已存 ${v.programmes} 条节目 · ${timeStr}${v.error ? ' · ' + v.error : ''}`;
@@ -1616,18 +1831,22 @@ async function epgStatus() {
   $('epg-progress').value = v.done;
   $('sync-epg').disabled = v.state === 'running';
 
-  // Update status chips
   $('val-backend').textContent = v.backend === 'mysql' ? 'MySQL 数据库' : '本地文件 (JSON)';
-  if (v.state === 'running') {
-    $('val-state').innerHTML = '<span class="pulse-dot" style="background:#f59e0b;"></span> 同步中...';
-  } else {
-    $('val-state').innerHTML = '<span class="pulse-dot"></span> 就绪';
-  }
+  const stateEl = $('val-state');
+  const dot = document.createElement('span');
+  dot.className = v.state === 'running' ? 'pulse-dot is-running' : 'pulse-dot';
+  stateEl.replaceChildren(dot, document.createTextNode(v.state === 'running' ? ' 同步中...' : ' 就绪'));
+
   $('val-channels').textContent = `${v.done} / ${v.total} 频道`;
   $('val-programmes').textContent = `${v.programmes.toLocaleString()} 条`;
   $('val-updated').textContent = timeStr;
 
-  if (lastEPGState === 'running' && v.state !== 'running') await loadEPG();
+  if (v.state === 'running') {
+    epgPollTimer = setTimeout(() => { epgStatus().catch(() => {}); }, 2000);
+  }
+  if (lastEPGState === 'running' && v.state !== 'running') {
+    await loadEPG();
+  }
   lastEPGState = v.state;
 }
 
@@ -1636,33 +1855,33 @@ function renderEPGList() {
   container.replaceChildren();
 
   const id = $('epg-channel').value;
-  const c = channels.find(c => (c.key ? c.key === id : c.id === id)) || channels.find(c => c.id === id);
+  const c = channels.find(ch => (ch.key ? ch.key === id : ch.id === id)) || channels.find(ch => ch.id === id);
   const now = Date.now() / 1000;
-  const query = ($('epg-search').value || '').trim().toLowerCase();
+  const rawQuery = $('epg-search').value || '';
+  if ($('epg-search-clear')) $('epg-search-clear').hidden = rawQuery.length === 0;
+  const query = rawQuery.trim().toLowerCase();
 
-  const timeFmt = seconds => new Date(seconds * 1000).toLocaleTimeString('zh-CN', {
+  const timeFmt = (seconds) => new Date(seconds * 1000).toLocaleTimeString('zh-CN', {
     timeZone: 'Asia/Shanghai',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
   });
 
-  // Calculate stats
-  let countLive = 0, countCatchup = 0, countUpcoming = 0;
+  let countLive = 0;
+  let countCatchup = 0;
+  let countUpcoming = 0;
   for (const p of currentEPGProgrammes) {
-    const isLive = p.start <= now && p.end > now;
-    const isCatchup = p.end <= now && c && c.catchup_days && p.start >= now - c.catchup_days * 86400;
-    const isUpcoming = p.start > now;
-    if (isLive) countLive++;
-    if (isCatchup) countCatchup++;
-    if (isUpcoming) countUpcoming++;
+    if (p.start <= now && p.end > now) countLive++;
+    if (p.end <= now && c && c.catchup_days && p.start >= now - c.catchup_days * 86400) countCatchup++;
+    if (p.start > now) countUpcoming++;
   }
 
   $('count-all').textContent = currentEPGProgrammes.length;
   $('count-live').textContent = countLive;
   $('count-catchup').textContent = countCatchup;
   $('count-upcoming').textContent = countUpcoming;
+  if ($('epg-jump-live')) $('epg-jump-live').hidden = countLive === 0;
 
-  // Filter programmes
   const filtered = currentEPGProgrammes.filter(p => {
     const isLive = p.start <= now && p.end > now;
     const isCatchup = p.end <= now && c && c.catchup_days && p.start >= now - c.catchup_days * 86400;
@@ -1672,23 +1891,28 @@ function renderEPGList() {
     if (epgCurrentFilter === 'catchup' && !isCatchup) return false;
     if (epgCurrentFilter === 'upcoming' && !isUpcoming) return false;
 
-    if (query && !p.title.toLowerCase().includes(query) && !(p.desc && p.desc.toLowerCase().includes(query))) return false;
+    if (query && !p.title.toLowerCase().includes(query) && !(p.desc && p.desc.toLowerCase().includes(query))) {
+      return false;
+    }
     return true;
   });
 
   if (!filtered.length) {
     const empty = document.createElement('div');
-    empty.className = 'empty';
-    empty.style.padding = '40px 10px';
-    empty.innerHTML = `
-      <div class="empty-icon" style="font-size:32px;">📅</div>
-      <h3 style="font-size:15px;">暂无匹配节目</h3>
-      <p style="font-size:12.5px;">该筛选条件下没有找到节目，请尝试更换日期、清除搜索词或点击立即同步。</p>
-    `;
+    empty.className = 'empty empty-epg';
+    const icon = document.createElement('div');
+    icon.className = 'empty-icon';
+    icon.textContent = '📅';
+    const h3 = document.createElement('h3');
+    h3.textContent = '暂无匹配节目';
+    const pEl = document.createElement('p');
+    pEl.textContent = '该筛选条件下没有找到节目，请尝试更换日期、清除搜索词或点击立即同步。';
+    empty.append(icon, h3, pEl);
     container.append(empty);
     return;
   }
 
+  const frag = document.createDocumentFragment();
   for (const p of filtered) {
     const isLive = p.start <= now && p.end > now;
     const isCatchup = p.end <= now && c && c.catchup_days && p.start >= now - c.catchup_days * 86400;
@@ -1700,25 +1924,20 @@ function renderEPGList() {
     // Col 1: Time & duration
     const timeCol = document.createElement('div');
     timeCol.className = 'epg-time-col';
-
     const timeRange = document.createElement('div');
     timeRange.className = 'epg-time-range';
     timeRange.textContent = `${timeFmt(p.start)} – ${timeFmt(p.end)}`;
-
     const durationMin = Math.max(1, Math.round((p.end - p.start) / 60));
     const duration = document.createElement('div');
     duration.className = 'epg-duration';
     duration.textContent = `${durationMin} 分钟`;
-
     timeCol.append(timeRange, duration);
 
-    // Col 2: Program title, Live progress, badges
+    // Col 2: Title, Progress, Badges & Description
     const infoCol = document.createElement('div');
     infoCol.className = 'epg-info-col';
-
     const titleRow = document.createElement('div');
     titleRow.className = 'epg-title-row';
-
     const titleEl = document.createElement('span');
     titleEl.className = 'epg-program-title';
     titleEl.textContent = p.title;
@@ -1732,7 +1951,6 @@ function renderEPGList() {
       liveBadge.append(liveDot, document.createTextNode('正在直播'));
       titleRow.append(liveBadge);
 
-      // Live Progress Bar
       const totalSec = Math.max(1, p.end - p.start);
       const elapsedSec = Math.max(0, now - p.start);
       const pct = Math.min(100, Math.max(0, Math.round((elapsedSec / totalSec) * 100)));
@@ -1741,18 +1959,16 @@ function renderEPGList() {
 
       const progressWrap = document.createElement('div');
       progressWrap.className = 'epg-live-progress';
-      const track = document.createElement('div');
-      track.className = 'epg-progress-track';
-      const fill = document.createElement('div');
-      fill.className = 'epg-progress-fill';
-      fill.style.width = pct + '%';
-      track.append(fill);
+      const progressBar = document.createElement('progress');
+      progressBar.className = 'epg-progress-bar';
+      progressBar.max = 100;
+      progressBar.value = pct;
 
       const meta = document.createElement('span');
       meta.className = 'epg-progress-meta';
       meta.textContent = `已播 ${elapsedMin} 分钟 · 剩余 ${remainMin} 分钟 (${pct}%)`;
 
-      progressWrap.append(track, meta);
+      progressWrap.append(progressBar, meta);
       infoCol.append(titleRow, progressWrap);
     } else {
       if (isCatchup) {
@@ -1764,7 +1980,9 @@ function renderEPGList() {
         const upcomingBadge = document.createElement('span');
         upcomingBadge.className = 'badge badge-purple';
         const startDiff = Math.ceil((p.start - now) / 60);
-        const diffText = startDiff >= 60 ? `${Math.floor(startDiff / 60)}小时${startDiff % 60 ? (startDiff % 60) + '分' : ''}后开始` : `${startDiff}分钟后开始`;
+        const diffText = startDiff >= 60
+          ? `${Math.floor(startDiff / 60)}小时${startDiff % 60 ? (startDiff % 60) + '分' : ''}后开始`
+          : `${startDiff}分钟后开始`;
         upcomingBadge.textContent = `即将播出 · ${diffText}`;
         titleRow.append(upcomingBadge);
       } else {
@@ -1796,13 +2014,10 @@ function renderEPGList() {
       const playBtn = document.createElement('button');
       playBtn.type = 'button';
       playBtn.className = 'btn-live-play';
-      playBtn.innerHTML = `
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-        观看直播
-      `;
+      playBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> 观看直播';
       playBtn.onclick = () => {
         play(c);
-        $('play-mode').value = 'http';
+        $('play-mode').value = c.operator_id ? 'http' : (c.unicast_url ? 'unicast' : 'multicast');
         updatePlayAddress();
       };
       actionCol.append(playBtn);
@@ -1812,41 +2027,37 @@ function renderEPGList() {
       replayLink.target = '_blank';
       replayLink.rel = 'noopener';
       const playRef = c.operator_id || c.key || c.id;
-      const playUrl = `/api/play?id=${encodeURIComponent(playRef)}&mode=http&start=${p.start}&end=${p.end}`;
+      const replayMode = c.operator_id ? 'http' : 'unicast';
+      const playUrl = `/api/play?id=${encodeURIComponent(playRef)}&mode=${replayMode}&start=${p.start}&end=${p.end}`;
       replayLink.href = playUrl;
-      replayLink.innerHTML = `
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="11 19 2 12 11 5 11 19"/><polygon points="22 19 13 12 22 5 22 19"/></svg>
-        回看
-      `;
+      replayLink.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="11 19 2 12 11 5 11 19"/><polygon points="22 19 13 12 22 5 22 19"/></svg> 回看';
 
       const copyBtn = document.createElement('button');
       copyBtn.type = 'button';
       copyBtn.className = 'secondary btn-copy-url';
       copyBtn.title = '复制回看地址';
-      copyBtn.innerHTML = `
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-      `;
+      copyBtn.setAttribute('aria-label', '复制回看地址');
+      copyBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
       copyBtn.onclick = () => {
-        const full = new URL(playUrl, location.origin).href;
-        copyText(full, '回看地址已复制到剪贴板');
+        copyText(new URL(playUrl, location.origin).href, '回看地址已复制到剪贴板');
       };
-
       actionCol.append(replayLink, copyBtn);
     } else {
       const label = document.createElement('span');
-      label.className = 'muted';
-      label.style.fontSize = '12px';
+      label.className = 'muted epg-status-label';
       label.textContent = isUpcoming ? '待播出' : '已结束';
       actionCol.append(label);
     }
 
     card.append(timeCol, infoCol, actionCol);
-    container.append(card);
+    frag.append(card);
   }
+  container.append(frag);
 }
 
 async function loadEPG() {
-  const version = ++epgRequestVersion, id = $('epg-channel').value;
+  const version = ++epgRequestVersion;
+  const id = $('epg-channel').value;
   updateEPGHero();
   renderDateRibbon();
 
@@ -1863,16 +2074,11 @@ async function loadEPG() {
   currentEPGProgrammes = value.programmes || [];
   const count = currentEPGProgrammes.length;
   $('epg-message').textContent = count ? `当日共 ${count} 个节目` : '该日期暂无节目单，请点击“立即同步”或选择其他日期';
-
   renderEPGList();
 
-  // If today is viewed, auto-scroll to the currently live program
   if ($('epg-date').value === getShanghaiTodayStr()) {
     setTimeout(() => {
-      const liveItem = document.querySelector('.epg-item.is-live');
-      if (liveItem) {
-        liveItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+      document.querySelector('.epg-item.is-live')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 120);
   }
 }
@@ -1885,30 +2091,37 @@ async function showEPG(c) {
   await loadEPG();
 }
 
-// EPG Event Listeners
 $('save-epg').onclick = () => busy($('save-epg'), async () => {
   await saveSettings();
   toast('EPG 设置已保存');
 });
-
 $('sync-epg').onclick = () => busy($('sync-epg'), async () => {
   await saveSettings();
   await api('epg/refresh', 'POST');
   await epgStatus();
   toast('节目单同步已开始');
 });
-
 $('epg-load').onclick = () => busy($('epg-load'), loadEPG);
-
 for (const id of ['epg-channel', 'epg-date']) {
   $(id).onchange = () => loadEPG().catch(e => { $('epg-message').textContent = e.message; });
 }
-
 $('epg-search').oninput = () => renderEPGList();
+$('epg-search-clear')?.addEventListener('click', () => {
+  $('epg-search').value = '';
+  renderEPGList();
+  $('epg-search').focus();
+});
 
-document.querySelectorAll('.filter-tab').forEach(tabBtn => {
+$('epg-jump-live')?.addEventListener('click', () => {
+  if (epgCurrentFilter !== 'all' && epgCurrentFilter !== 'live') {
+    document.querySelector('.filter-tab[data-filter="all"]')?.click();
+  }
+  document.querySelector('.epg-item.is-live')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+});
+
+document.querySelectorAll('.filter-tab[data-filter]').forEach(tabBtn => {
   tabBtn.addEventListener('click', () => {
-    document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.filter-tab[data-filter]').forEach(b => b.classList.remove('active'));
     tabBtn.classList.add('active');
     epgCurrentFilter = tabBtn.dataset.filter;
     renderEPGList();
@@ -1919,7 +2132,6 @@ document.querySelector('[data-tab="epg"]').addEventListener('click', () => {
   epgStatus().then(loadEPG).catch(e => toast(e.message, true));
 });
 
-// Periodic live update timer for active progress bar
 if (epgLiveTimer) clearInterval(epgLiveTimer);
 epgLiveTimer = setInterval(() => {
   if (!$('tab-epg').hidden && $('epg-date').value === getShanghaiTodayStr() && currentEPGProgrammes.length) {
@@ -1927,16 +2139,17 @@ epgLiveTimer = setInterval(() => {
   }
 }, 45000);
 
-let currentLogoSources = ['https://tvlogo.netioe.com'];
-let logoSourcesStatusData = {};
+/* ==========================================================================
+   Logo Sources Management
+   ========================================================================== */
 
 function renderLogoSourcesList() {
   const container = $('logo-sources-list');
   if (!container) return;
-  container.innerHTML = '';
+  container.replaceChildren();
 
   if (!currentLogoSources || currentLogoSources.length === 0) {
-    currentLogoSources = ['https://tvlogo.netioe.com'];
+    currentLogoSources = [...DEFAULT_LOGO_SOURCES];
   }
 
   currentLogoSources.forEach((url, idx) => {
@@ -1954,11 +2167,9 @@ function renderLogoSourcesList() {
     const badge = document.createElement('span');
     badge.className = 'source-badge';
     const info = logoSourcesStatusData?.sources?.find(s => s.url === url);
-    if (info) {
-      badge.textContent = `已索引 ${info.count || 0} 个${info.dark_count ? ' (深色 ' + info.dark_count + ')' : ''}`;
-    } else {
-      badge.textContent = '待更新索引';
-    }
+    badge.textContent = info
+      ? `已索引 ${info.count || 0} 个${info.dark_count ? ' (深色 ' + info.dark_count + ')' : ''}`
+      : '待更新索引';
 
     const actions = document.createElement('div');
     actions.className = 'source-actions';
@@ -1970,9 +2181,7 @@ function renderLogoSourcesList() {
     upBtn.title = '提高优先级（向上移动）';
     upBtn.disabled = idx === 0;
     upBtn.onclick = () => {
-      const temp = currentLogoSources[idx - 1];
-      currentLogoSources[idx - 1] = currentLogoSources[idx];
-      currentLogoSources[idx] = temp;
+      [currentLogoSources[idx - 1], currentLogoSources[idx]] = [currentLogoSources[idx], currentLogoSources[idx - 1]];
       renderLogoSourcesList();
     };
 
@@ -1983,9 +2192,7 @@ function renderLogoSourcesList() {
     downBtn.title = '降低优先级（向下移动）';
     downBtn.disabled = idx === currentLogoSources.length - 1;
     downBtn.onclick = () => {
-      const temp = currentLogoSources[idx + 1];
-      currentLogoSources[idx + 1] = currentLogoSources[idx];
-      currentLogoSources[idx] = temp;
+      [currentLogoSources[idx + 1], currentLogoSources[idx]] = [currentLogoSources[idx], currentLogoSources[idx + 1]];
       renderLogoSourcesList();
     };
 
@@ -2009,24 +2216,31 @@ function renderLogoSourcesList() {
   });
 }
 
-if ($('add-logo-source-btn')) {
-  $('add-logo-source-btn').onclick = () => {
-    const input = $('new-logo-source-input');
-    const val = input.value.trim();
-    if (!val) return;
-    if (!/^https?:\/\//i.test(val)) {
-      toast('请输入有效的 HTTP(S) 地址', true);
-      return;
-    }
-    if (!currentLogoSources.includes(val)) {
-      currentLogoSources.push(val);
-      input.value = '';
-      renderLogoSourcesList();
-    } else {
-      toast('该台标源已存在', true);
-    }
-  };
+function addLogoSourceFromInput() {
+  const input = $('new-logo-source-input');
+  if (!input) return;
+  const val = input.value.trim();
+  if (!val) return;
+  if (!/^https?:\/\//i.test(val)) {
+    toast('请输入有效的 HTTP(S) 地址', true);
+    return;
+  }
+  if (!currentLogoSources.includes(val)) {
+    currentLogoSources.push(val);
+    input.value = '';
+    renderLogoSourcesList();
+  } else {
+    toast('该台标源已存在', true);
+  }
 }
+
+$('add-logo-source-btn')?.addEventListener('click', addLogoSourceFromInput);
+$('new-logo-source-input')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    addLogoSourceFromInput();
+  }
+});
 
 async function logoSourcesStatus() {
   const result = await api('logos/status');
@@ -2035,46 +2249,38 @@ async function logoSourcesStatus() {
   $('logos-status').textContent = `已配置 ${result.sources?.length || 0} 个源 · 共计索引 ${result.total_count || 0} 个台标`;
 }
 
-if ($('save-logos')) {
-  $('save-logos').onclick = () => busy($('save-logos'), async () => {
-    await saveSettings();
-    await loadChannels();
-    await logoSourcesStatus();
-    toast('台标源已保存；更换来源后请更新台标目录');
-  });
-}
+$('save-logos')?.addEventListener('click', () => busy($('save-logos'), async () => {
+  await saveSettings();
+  await loadChannels();
+  await logoSourcesStatus();
+  toast('台标源已保存；更换来源后请更新台标目录');
+}));
 
-if ($('refresh-logos')) {
-  $('refresh-logos').onclick = () => busy($('refresh-logos'), async () => {
-    await saveSettings();
-    $('logos-status').textContent = '正在更新台标目录…';
-    const r = await api('logos/refresh', 'POST');
-    logoSourcesStatusData = r;
-    renderLogoSourcesList();
-    await loadChannels();
-    $('logos-status').textContent = `共计 ${r.total_count || 0} 个台标${r.errors?.length ? ' · 遇到问题：' + r.errors.join('；') : ' · 已更新完成'}`;
-  });
-}
+$('refresh-logos')?.addEventListener('click', () => busy($('refresh-logos'), async () => {
+  await saveSettings();
+  $('logos-status').textContent = '正在更新台标目录…';
+  const r = await api('logos/refresh', 'POST');
+  logoSourcesStatusData = r;
+  renderLogoSourcesList();
+  await loadChannels();
+  $('logos-status').textContent = `共计 ${r.total_count || 0} 个台标${r.errors?.length ? ' · 遇到问题：' + r.errors.join('；') : ' · 已更新完成'}`;
+}));
 
-if ($('reset-logos')) {
-  $('reset-logos').onclick = () => {
-    currentLogoSources = ['https://tvlogo.netioe.com'];
-    renderLogoSourcesList();
-    toast('已恢复默认台标源，请点击「保存台标源」确认保存');
-  };
-}
+$('reset-logos')?.addEventListener('click', () => {
+  currentLogoSources = [...DEFAULT_LOGO_SOURCES];
+  renderLogoSourcesList();
+  toast('已恢复默认台标源，请点击「保存台标源」确认保存');
+});
 
-document.querySelector('[data-tab="ai"]').addEventListener('click', () => logoSourcesStatus().catch(e => toast(e.message, true)));
-if (document.querySelector('[data-tab="account"]')) document.querySelector('[data-tab="account"]').addEventListener('click', () => loadMappings());
+document.querySelector('[data-tab="ai"]').addEventListener('click', () => {
+  logoSourcesStatus().catch(e => toast(e.message, true));
+});
 
-// Initialize
-init().catch(() => {});
-
-let savedMappings = [];
+/* ==========================================================================
+   Keyword Mappings
+   ========================================================================== */
 
 async function loadMappings() {
-  const tbody = $('mapping-rows');
-  const empty = $('mapping-empty');
   const badge = $('mapping-badge');
   try {
     savedMappings = (await api('mappings')) || [];
@@ -2113,14 +2319,12 @@ function renderMappings() {
 
     const tdID = document.createElement('td');
     const idBadge = document.createElement('span');
-    idBadge.className = 'badge';
-    idBadge.style.fontFamily = 'monospace';
+    idBadge.className = 'badge mono';
     idBadge.textContent = m.target_id;
     tdID.appendChild(idBadge);
 
     const tdOp = document.createElement('td');
-    tdOp.style.fontFamily = 'monospace';
-    tdOp.style.fontSize = '12px';
+    tdOp.className = 'mono-cell';
     tdOp.textContent = m.operator_id || '-';
 
     const tdGrp = document.createElement('td');
@@ -2129,8 +2333,7 @@ function renderMappings() {
     const tdAct = document.createElement('td');
     const delBtn = document.createElement('button');
     delBtn.type = 'button';
-    delBtn.className = 'secondary';
-    delBtn.style.cssText = 'font-size: 11px; padding: 2px 8px; line-height: 1.2; height: auto; color: var(--live-red, #dc2626);';
+    delBtn.className = 'secondary btn-danger-ghost';
     delBtn.textContent = '删除';
     delBtn.onclick = async () => {
       if (!confirm(`确定删除关键词「${m.keyword}」的映射吗？`)) return;
@@ -2144,73 +2347,111 @@ function renderMappings() {
     };
     tdAct.appendChild(delBtn);
 
-    tr.appendChild(tdKw);
-    tr.appendChild(tdTarget);
-    tr.appendChild(tdID);
-    tr.appendChild(tdOp);
-    tr.appendChild(tdGrp);
-    tr.appendChild(tdAct);
-
+    tr.append(tdKw, tdTarget, tdID, tdOp, tdGrp, tdAct);
     tbody.appendChild(tr);
   });
 }
 
-if ($('add-mapping-form')) {
-  $('add-mapping-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const form = e.target;
-    const kw = form.elements.keyword.value.trim();
-    const targetName = form.elements.target_name.value.trim();
-    const targetID = form.elements.target_id.value.trim();
-    const operatorID = form.elements.operator_id.value.trim();
-    const group = form.elements.group.value.trim();
-    if (!kw || !targetName || !targetID) {
-      toast('请填写关键词、目标频道名称和数字台号', true);
-      return;
-    }
-    await busy(form.querySelector('button[type="submit"]'), async () => {
-      try {
-        await api('mappings', 'POST', {
-          keyword: kw,
-          target_name: targetName,
-          target_id: targetID,
-          operator_id: operatorID,
-          group: group,
-        });
-        form.reset();
-        toast(`已添加关键词「${kw}」映射`);
-        await loadMappings();
-      } catch (err) {
-        toast(`添加映射失败: ${err.message}`, true);
+$('add-mapping-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const kw = form.elements.keyword.value.trim();
+  const targetName = form.elements.target_name.value.trim();
+  const targetID = form.elements.target_id.value.trim();
+  const operatorID = form.elements.operator_id.value.trim();
+  const group = form.elements.group.value.trim();
+  if (!kw || !targetName || !targetID) {
+    toast('请填写关键词、目标频道名称和数字台号', true);
+    return;
+  }
+  await busy(form.querySelector('button[type="submit"]'), async () => {
+    await api('mappings', 'POST', {
+      keyword: kw,
+      target_name: targetName,
+      target_id: targetID,
+      operator_id: operatorID,
+      group,
+    });
+    form.reset();
+    toast(`已添加关键词「${kw}」映射`);
+    await loadMappings();
+  });
+});
+
+$('reset-mappings-btn')?.addEventListener('click', async () => {
+  if (!confirm('确定将频道关键词映射恢复为默认预设吗？')) return;
+  try {
+    await api('mappings/reset', 'POST');
+    toast('已恢复为默认关键词映射');
+    await loadMappings();
+  } catch (err) {
+    toast(`恢复映射失败: ${err.message}`, true);
+  }
+});
+
+/* ==========================================================================
+   Drag-and-Drop Reordering Helper
+   ========================================================================== */
+
+function attachDragReorder(container, itemSelector, onReorder) {
+  let dragFromIdx = -1;
+
+  container.querySelectorAll(itemSelector).forEach((item, idx) => {
+    item.draggable = true;
+    item.addEventListener('dragstart', (e) => {
+      dragFromIdx = idx;
+      item.classList.add('is-dragging');
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(idx));
       }
     });
-  };
+    item.addEventListener('dragend', () => {
+      dragFromIdx = -1;
+      container.querySelectorAll(itemSelector).forEach(el => {
+        el.classList.remove('is-dragging', 'drag-over-top', 'drag-over-bottom');
+      });
+    });
+    item.addEventListener('dragover', (e) => {
+      if (dragFromIdx === -1 || dragFromIdx === idx) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      const rect = item.getBoundingClientRect();
+      const before = e.clientY < rect.top + rect.height / 2;
+      item.classList.toggle('drag-over-top', before);
+      item.classList.toggle('drag-over-bottom', !before);
+    });
+    item.addEventListener('dragleave', () => {
+      item.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
+    item.addEventListener('drop', (e) => {
+      if (dragFromIdx === -1 || dragFromIdx === idx) return;
+      e.preventDefault();
+      const rect = item.getBoundingClientRect();
+      const before = e.clientY < rect.top + rect.height / 2;
+      let targetIdx = before ? idx : idx + 1;
+      if (dragFromIdx < targetIdx) targetIdx--;
+      const from = dragFromIdx;
+      dragFromIdx = -1;
+      if (from !== targetIdx) {
+        onReorder(from, targetIdx);
+      }
+    });
+  });
 }
 
-if ($('reset-mappings-btn')) {
-  $('reset-mappings-btn').onclick = async () => {
-    if (!confirm('确定将频道关键词映射恢复为默认预设吗？')) return;
-    try {
-      await api('mappings/reset', 'POST');
-      toast('已恢复为默认关键词映射');
-      await loadMappings();
-    } catch (err) {
-      toast(`恢复映射失败: ${err.message}`, true);
-    }
-  };
-}
-
-
-let currentGroupOrder = ['4K', '央视', '卫视', '高清', '本地', '少儿', '标清', '其它', '待识别'];
+/* ==========================================================================
+   Group Order & In-Group Channel Sorting
+   ========================================================================== */
 
 function renderGroupOrderList() {
   const container = $('group-order-list');
   const select = $('quick-add-group-select');
   if (!container) return;
-  container.innerHTML = '';
+  container.replaceChildren();
 
   if (!currentGroupOrder || currentGroupOrder.length === 0) {
-    currentGroupOrder = ['4K', '央视', '卫视', '高清', '本地', '少儿', '标清', '其它', '待识别'];
+    currentGroupOrder = [...DEFAULT_GROUP_ORDER];
   }
 
   currentGroupOrder.forEach((groupName, idx) => {
@@ -2218,9 +2459,12 @@ function renderGroupOrderList() {
     item.className = 'group-order-item';
 
     const left = document.createElement('div');
-    left.style.display = 'flex';
-    left.style.alignItems = 'center';
-    left.style.gap = '8px';
+    left.className = 'group-order-left';
+
+    const handle = document.createElement('span');
+    handle.className = 'drag-handle';
+    handle.textContent = '⋮⋮';
+    handle.title = '按住拖动调整顺序';
 
     const indexSpan = document.createElement('span');
     indexSpan.className = 'group-index';
@@ -2233,11 +2477,9 @@ function renderGroupOrderList() {
     const count = channels.filter(c => (c.group || '未分组') === groupName).length;
     const badge = document.createElement('span');
     badge.className = 'badge';
-    badge.style.fontSize = '11px';
-    badge.style.padding = '1px 6px';
     badge.textContent = `${count} 个频道`;
 
-    left.append(indexSpan, nameSpan, badge);
+    left.append(handle, indexSpan, nameSpan, badge);
 
     const actions = document.createElement('div');
     actions.className = 'group-actions';
@@ -2249,9 +2491,7 @@ function renderGroupOrderList() {
     upBtn.title = '向上移动';
     upBtn.disabled = idx === 0;
     upBtn.onclick = () => {
-      const temp = currentGroupOrder[idx - 1];
-      currentGroupOrder[idx - 1] = currentGroupOrder[idx];
-      currentGroupOrder[idx] = temp;
+      [currentGroupOrder[idx - 1], currentGroupOrder[idx]] = [currentGroupOrder[idx], currentGroupOrder[idx - 1]];
       renderGroupOrderList();
     };
 
@@ -2262,9 +2502,7 @@ function renderGroupOrderList() {
     downBtn.title = '向下移动';
     downBtn.disabled = idx === currentGroupOrder.length - 1;
     downBtn.onclick = () => {
-      const temp = currentGroupOrder[idx + 1];
-      currentGroupOrder[idx + 1] = currentGroupOrder[idx];
-      currentGroupOrder[idx] = temp;
+      [currentGroupOrder[idx + 1], currentGroupOrder[idx]] = [currentGroupOrder[idx], currentGroupOrder[idx + 1]];
       renderGroupOrderList();
     };
 
@@ -2283,6 +2521,12 @@ function renderGroupOrderList() {
     container.append(item);
   });
 
+  attachDragReorder(container, '.group-order-item', (from, to) => {
+    const [moved] = currentGroupOrder.splice(from, 1);
+    currentGroupOrder.splice(to, 0, moved);
+    renderGroupOrderList();
+  });
+
   if (select) {
     select.replaceChildren(new Option('快速添加现有分组…', ''));
     const existing = [...new Set(channels.map(c => c.group || '未分组'))].filter(Boolean);
@@ -2294,86 +2538,69 @@ function renderGroupOrderList() {
   }
 }
 
-if ($('add-group-btn')) {
-  $('add-group-btn').onclick = () => {
-    const input = $('new-group-name');
-    const val = input.value.trim();
-    if (!val) return;
-    if (!currentGroupOrder.includes(val)) {
-      currentGroupOrder.push(val);
-      input.value = '';
-      renderGroupOrderList();
-    } else {
-      toast(`分组「${val}」已在排序列表中`, true);
-    }
-  };
-}
-
-if ($('quick-add-group-select')) {
-  $('quick-add-group-select').onchange = () => {
-    const val = $('quick-add-group-select').value;
-    if (val && !currentGroupOrder.includes(val)) {
-      currentGroupOrder.push(val);
-      $('quick-add-group-select').value = '';
-      renderGroupOrderList();
-    }
-  };
-}
-
-if ($('save-group-order-btn')) {
-  $('save-group-order-btn').onclick = () => busy($('save-group-order-btn'), async () => {
-    try {
-      if (!settings) settings = (await api('settings')).settings;
-      settings.group_order = currentGroupOrder;
-      await api('settings', 'PUT', { settings: collectSettings() });
-      fillSettings(await api('settings'));
-      await loadChannels();
-      toast('分组排序设置已保存，频道列表和导出播放列表已按新顺序排序');
-    } catch (e) {
-      toast('保存分组排序失败: ' + e.message, true);
-    }
-  });
-}
-
-if ($('reset-group-order-btn')) {
-  $('reset-group-order-btn').onclick = () => {
-    currentGroupOrder = ['4K', '央视', '卫视', '高清', '本地', '少儿', '标清', '其它', '待识别'];
+function addGroupFromInput() {
+  const input = $('new-group-name');
+  if (!input) return;
+  const val = input.value.trim();
+  if (!val) return;
+  if (!currentGroupOrder.includes(val)) {
+    currentGroupOrder.push(val);
+    input.value = '';
     renderGroupOrderList();
-    toast('已恢复默认分组排序，请点击「保存分组排序」确认保存');
-  };
+  } else {
+    toast(`分组「${val}」已在排序列表中`, true);
+  }
 }
 
-if ($('probe-channel-btn')) {
-  $('probe-channel-btn').onclick = () => busy($('probe-channel-btn'), async () => {
-    const form = $('channel-form');
-    const ref = editing?.key || editing?.id || form.elements.id.value;
-    if (!ref) {
-      toast('请先保存频道或选择已知频道再探测', true);
-      return;
-    }
-    try {
-      toast('正在从实时流探测分辨率…');
-      const res = await api('channels/' + encodeURIComponent(ref) + '/probe', 'POST');
-      if (res && res.resolution) {
-        form.elements.resolution.value = res.resolution;
-        if (editing) editing.resolution = res.resolution;
-        toast(`探测成功: ${res.resolution} (${getResolutionLabel(res.resolution)})`);
-      } else {
-        toast('未能探测到有效分辨率', true);
-      }
-    } catch (e) {
-      toast('探测流分辨率失败: ' + e.message, true);
-    }
-  });
-}
+$('add-group-btn')?.addEventListener('click', addGroupFromInput);
+$('new-group-name')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    addGroupFromInput();
+  }
+});
 
+$('quick-add-group-select')?.addEventListener('change', () => {
+  const val = $('quick-add-group-select').value;
+  if (val && !currentGroupOrder.includes(val)) {
+    currentGroupOrder.push(val);
+    $('quick-add-group-select').value = '';
+    renderGroupOrderList();
+  }
+});
 
-/* ==========================================================================
-   In-Group Channel Sorting & Batch Probing
-   ========================================================================== */
+$('save-group-order-btn')?.addEventListener('click', () => busy($('save-group-order-btn'), async () => {
+  if (!settings) settings = (await api('settings')).settings;
+  settings.group_order = currentGroupOrder;
+  await api('settings', 'PUT', { settings: collectSettings() });
+  fillSettings(await api('settings'));
+  await loadChannels();
+  toast('分组排序设置已保存，频道列表和导出播放列表已按新顺序排序');
+}));
 
-let currentGroupChannelOrders = {};
-let selectedSortGroup = '';
+$('reset-group-order-btn')?.addEventListener('click', () => {
+  currentGroupOrder = [...DEFAULT_GROUP_ORDER];
+  renderGroupOrderList();
+  toast('已恢复默认分组排序，请点击「保存分组排序」确认保存');
+});
+
+$('probe-channel-btn')?.addEventListener('click', () => busy($('probe-channel-btn'), async () => {
+  const form = $('channel-form');
+  const ref = editing?.key || editing?.id || form.elements.id.value;
+  if (!ref || ref === '0') {
+    toast('请先保存频道或选择已知频道再探测', true);
+    return;
+  }
+  toast('正在从实时流探测分辨率…');
+  const res = await api('channels/' + encodeURIComponent(ref) + '/probe', 'POST');
+  if (res && res.resolution) {
+    form.elements.resolution.value = res.resolution;
+    if (editing) editing.resolution = res.resolution;
+    toast(`探测成功: ${res.resolution} (${getResolutionLabel(res.resolution)})`);
+  } else {
+    toast('未能探测到有效分辨率', true);
+  }
+}));
 
 function getGroupChannels(groupName) {
   return channels.filter(c => (c.group || '未分组') === groupName);
@@ -2417,23 +2644,24 @@ function getCurrentInGroupKeys() {
 function renderInGroupChannelList() {
   const container = $('in-group-channel-list');
   if (!container) return;
-  container.innerHTML = '';
+  container.replaceChildren();
   if (!selectedSortGroup) return;
 
   const groupChans = getGroupChannels(selectedSortGroup);
   if (groupChans.length === 0) {
-    container.innerHTML = '<p class="muted" style="text-align:center; padding:16px;">此分组暂无频道</p>';
+    const emptyP = document.createElement('p');
+    emptyP.className = 'muted in-group-empty';
+    emptyP.textContent = '此分组暂无频道';
+    container.append(emptyP);
     return;
   }
 
-  let ordered = [...groupChans];
+  const ordered = [...groupChans];
   const customKeys = currentGroupChannelOrders[selectedSortGroup] || [];
   if (customKeys.length > 0) {
     ordered.sort((a, b) => {
-      const keyA = a.key || a.id;
-      const keyB = b.key || b.id;
-      const iA = customKeys.indexOf(keyA);
-      const iB = customKeys.indexOf(keyB);
+      const iA = customKeys.indexOf(a.key || a.id);
+      const iB = customKeys.indexOf(b.key || b.id);
       if (iA !== -1 && iB !== -1) return iA - iB;
       if (iA !== -1) return -1;
       if (iB !== -1) return 1;
@@ -2446,6 +2674,11 @@ function renderInGroupChannelList() {
     item.className = 'in-group-channel-item';
     item.dataset.key = c.key || c.id;
 
+    const handle = document.createElement('span');
+    handle.className = 'drag-handle';
+    handle.textContent = '⋮⋮';
+    handle.title = '按住拖动调整顺序';
+
     const seq = document.createElement('span');
     seq.className = 'in-group-seq';
     seq.textContent = idx + 1;
@@ -2456,6 +2689,7 @@ function renderInGroupChannelList() {
       const img = document.createElement('img');
       img.src = c.logo;
       img.alt = '';
+      img.referrerPolicy = 'no-referrer';
       img.onerror = () => { logoBox.textContent = '📺'; };
       logoBox.append(img);
     } else {
@@ -2468,19 +2702,15 @@ function renderInGroupChannelList() {
 
     const meta = document.createElement('div');
     meta.className = 'in-group-meta';
-
     if (c.id && !isInvalidID(c.id)) {
       const idBadge = document.createElement('span');
-      idBadge.className = 'badge';
-      idBadge.style.fontSize = '11px';
+      idBadge.className = 'badge mono';
       idBadge.textContent = `台号: ${c.id}`;
       meta.append(idBadge);
     }
-
     if (c.resolution) {
       const resBadge = document.createElement('span');
-      resBadge.className = 'badge badge-res';
-      resBadge.style.fontSize = '11px';
+      resBadge.className = 'badge-res ' + getResolutionClass(c.resolution);
       resBadge.textContent = c.resolution;
       meta.append(resBadge);
     }
@@ -2488,173 +2718,137 @@ function renderInGroupChannelList() {
     const actions = document.createElement('div');
     actions.className = 'in-group-actions';
 
-    const topBtn = document.createElement('button');
-    topBtn.type = 'button';
-    topBtn.className = 'secondary';
-    topBtn.textContent = '⤒';
-    topBtn.title = '移到置顶';
-    topBtn.disabled = idx === 0;
-    topBtn.onclick = () => {
-      const currentList = getCurrentInGroupKeys();
-      const itemKey = currentList.splice(idx, 1)[0];
-      currentList.unshift(itemKey);
-      currentGroupChannelOrders[selectedSortGroup] = currentList;
+    const moveItem = (newIdx) => {
+      const list = getCurrentInGroupKeys();
+      const [moved] = list.splice(idx, 1);
+      list.splice(newIdx, 0, moved);
+      currentGroupChannelOrders[selectedSortGroup] = list;
       renderInGroupChannelList();
     };
 
-    const upBtn = document.createElement('button');
-    upBtn.type = 'button';
-    upBtn.className = 'secondary';
-    upBtn.textContent = '↑';
-    upBtn.title = '向上移动';
-    upBtn.disabled = idx === 0;
-    upBtn.onclick = () => {
-      const currentList = getCurrentInGroupKeys();
-      const temp = currentList[idx - 1];
-      currentList[idx - 1] = currentList[idx];
-      currentList[idx] = temp;
-      currentGroupChannelOrders[selectedSortGroup] = currentList;
-      renderInGroupChannelList();
+    const mkBtn = (label, title, disabled, onClick) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'secondary';
+      b.textContent = label;
+      b.title = title;
+      b.disabled = disabled;
+      b.onclick = onClick;
+      return b;
     };
 
-    const downBtn = document.createElement('button');
-    downBtn.type = 'button';
-    downBtn.className = 'secondary';
-    downBtn.textContent = '↓';
-    downBtn.title = '向下移动';
-    downBtn.disabled = idx === ordered.length - 1;
-    downBtn.onclick = () => {
-      const currentList = getCurrentInGroupKeys();
-      const temp = currentList[idx + 1];
-      currentList[idx + 1] = currentList[idx];
-      currentList[idx] = temp;
-      currentGroupChannelOrders[selectedSortGroup] = currentList;
-      renderInGroupChannelList();
-    };
+    actions.append(
+      mkBtn('⤒', '移到置顶', idx === 0, () => moveItem(0)),
+      mkBtn('↑', '向上移动', idx === 0, () => moveItem(idx - 1)),
+      mkBtn('↓', '向下移动', idx === ordered.length - 1, () => moveItem(idx + 1)),
+      mkBtn('⤓', '移到末尾', idx === ordered.length - 1, () => moveItem(ordered.length - 1))
+    );
 
-    const btmBtn = document.createElement('button');
-    btmBtn.type = 'button';
-    btmBtn.className = 'secondary';
-    btmBtn.textContent = '⤓';
-    btmBtn.title = '移到末尾';
-    btmBtn.disabled = idx === ordered.length - 1;
-    btmBtn.onclick = () => {
-      const currentList = getCurrentInGroupKeys();
-      const itemKey = currentList.splice(idx, 1)[0];
-      currentList.push(itemKey);
-      currentGroupChannelOrders[selectedSortGroup] = currentList;
-      renderInGroupChannelList();
-    };
-
-    actions.append(topBtn, upBtn, downBtn, btmBtn);
-    item.append(seq, logoBox, nameSpan, meta, actions);
+    item.append(handle, seq, logoBox, nameSpan, meta, actions);
     container.append(item);
   });
-}
 
-if ($('group-channel-select')) {
-  $('group-channel-select').onchange = () => {
-    selectedSortGroup = $('group-channel-select').value;
+  attachDragReorder(container, '.in-group-channel-item', (from, to) => {
+    const list = getCurrentInGroupKeys();
+    const [moved] = list.splice(from, 1);
+    list.splice(to, 0, moved);
+    currentGroupChannelOrders[selectedSortGroup] = list;
     renderInGroupChannelList();
-  };
-}
-
-if ($('sort-in-group-by-id')) {
-  $('sort-in-group-by-id').onclick = () => {
-    const groupChans = getGroupChannels(selectedSortGroup);
-    groupChans.sort((a, b) => {
-      const idA = Number(a.id), idB = Number(b.id);
-      if (!isNaN(idA) && !isNaN(idB) && idA > 0 && idB > 0) return idA - idB;
-      if (!isNaN(idA) && idA > 0) return -1;
-      if (!isNaN(idB) && idB > 0) return 1;
-      return a.name.localeCompare(b.name, 'zh-CN', { numeric: true });
-    });
-    currentGroupChannelOrders[selectedSortGroup] = groupChans.map(c => c.key || c.id);
-    renderInGroupChannelList();
-    toast(`已按台号顺序排列「${selectedSortGroup}」频道`);
-  };
-}
-
-if ($('sort-in-group-by-name')) {
-  $('sort-in-group-by-name').onclick = () => {
-    const groupChans = getGroupChannels(selectedSortGroup);
-    groupChans.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN', { numeric: true }));
-    currentGroupChannelOrders[selectedSortGroup] = groupChans.map(c => c.key || c.id);
-    renderInGroupChannelList();
-    toast(`已按名称字典序排列「${selectedSortGroup}」频道`);
-  };
-}
-
-if ($('sort-in-group-by-res')) {
-  $('sort-in-group-by-res').onclick = () => {
-    const resScore = res => {
-      if (!res) return 0;
-      const m = res.match(/(\d+)x(\d+)/i);
-      if (m) return Number(m[1]) * Number(m[2]);
-      if (/4k/i.test(res)) return 3840 * 2160;
-      if (/1080/i.test(res)) return 1920 * 1080;
-      if (/720/i.test(res)) return 1280 * 720;
-      return 1;
-    };
-    const groupChans = getGroupChannels(selectedSortGroup);
-    groupChans.sort((a, b) => {
-      const sA = resScore(a.resolution);
-      const sB = resScore(b.resolution);
-      if (sA !== sB) return sB - sA;
-      return a.name.localeCompare(b.name, 'zh-CN', { numeric: true });
-    });
-    currentGroupChannelOrders[selectedSortGroup] = groupChans.map(c => c.key || c.id);
-    renderInGroupChannelList();
-    toast(`已按分辨率规格优先排列「${selectedSortGroup}」频道`);
-  };
-}
-
-if ($('save-in-group-order-btn')) {
-  $('save-in-group-order-btn').onclick = () => busy($('save-in-group-order-btn'), async () => {
-    try {
-      const keys = getCurrentInGroupKeys();
-      if (!currentGroupChannelOrders) currentGroupChannelOrders = {};
-      currentGroupChannelOrders[selectedSortGroup] = keys;
-      if (!settings) settings = (await api('settings')).settings;
-      settings.group_channel_order = currentGroupChannelOrders;
-      await api('settings', 'PUT', { settings: collectSettings() });
-      fillSettings(await api('settings'));
-      await loadChannels();
-      toast(`「${selectedSortGroup}」组内频道排序已保存`);
-    } catch (e) {
-      toast('保存组内排序失败: ' + e.message, true);
-    }
   });
 }
 
-if ($('reset-in-group-order-btn')) {
-  $('reset-in-group-order-btn').onclick = () => {
-    if (currentGroupChannelOrders && currentGroupChannelOrders[selectedSortGroup]) {
-      delete currentGroupChannelOrders[selectedSortGroup];
-    }
-    renderInGroupChannelList();
-    toast(`已恢复「${selectedSortGroup}」默认组内顺序，请点击「保存组内排序」确认保存`);
+$('group-channel-select')?.addEventListener('change', () => {
+  selectedSortGroup = $('group-channel-select').value;
+  renderInGroupChannelList();
+});
+
+$('sort-in-group-by-id')?.addEventListener('click', () => {
+  const groupChans = getGroupChannels(selectedSortGroup);
+  groupChans.sort((a, b) => {
+    const rankA = getCCTVRank(a.name);
+    const rankB = getCCTVRank(b.name);
+    if (rankA !== null && rankB !== null && rankA !== rankB) return rankA - rankB;
+    if ((rankA !== null) !== (rankB !== null)) return rankA !== null ? -1 : 1;
+    const idA = Number(a.id);
+    const idB = Number(b.id);
+    if (!isNaN(idA) && !isNaN(idB) && idA > 0 && idB > 0 && idA !== idB) return idA - idB;
+    if (!isNaN(idA) && idA > 0) return -1;
+    if (!isNaN(idB) && idB > 0) return 1;
+    return a.name.localeCompare(b.name, 'zh-CN', { numeric: true });
+  });
+  currentGroupChannelOrders[selectedSortGroup] = groupChans.map(c => c.key || c.id);
+  renderInGroupChannelList();
+  toast(`已按台号/央视顺序排列「${selectedSortGroup}」频道`);
+});
+
+$('sort-in-group-by-name')?.addEventListener('click', () => {
+  const groupChans = getGroupChannels(selectedSortGroup);
+  groupChans.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN', { numeric: true }));
+  currentGroupChannelOrders[selectedSortGroup] = groupChans.map(c => c.key || c.id);
+  renderInGroupChannelList();
+  toast(`已按名称字典序排列「${selectedSortGroup}」频道`);
+});
+
+$('sort-in-group-by-res')?.addEventListener('click', () => {
+  const resScore = (res) => {
+    if (!res) return 0;
+    const m = res.match(/(\d+)x(\d+)/i);
+    if (m) return Number(m[1]) * Number(m[2]);
+    if (/4k/i.test(res)) return 3840 * 2160;
+    if (/1080/i.test(res)) return 1920 * 1080;
+    if (/720/i.test(res)) return 1280 * 720;
+    return 1;
   };
-}
+  const groupChans = getGroupChannels(selectedSortGroup);
+  groupChans.sort((a, b) => {
+    const diff = resScore(b.resolution) - resScore(a.resolution);
+    if (diff !== 0) return diff;
+    return a.name.localeCompare(b.name, 'zh-CN', { numeric: true });
+  });
+  currentGroupChannelOrders[selectedSortGroup] = groupChans.map(c => c.key || c.id);
+  renderInGroupChannelList();
+  toast(`已按分辨率规格优先排列「${selectedSortGroup}」频道`);
+});
+
+$('save-in-group-order-btn')?.addEventListener('click', () => busy($('save-in-group-order-btn'), async () => {
+  const keys = getCurrentInGroupKeys();
+  if (!currentGroupChannelOrders) currentGroupChannelOrders = {};
+  currentGroupChannelOrders[selectedSortGroup] = keys;
+  if (!settings) settings = (await api('settings')).settings;
+  settings.group_channel_order = currentGroupChannelOrders;
+  await api('settings', 'PUT', { settings: collectSettings() });
+  fillSettings(await api('settings'));
+  await loadChannels();
+  toast(`「${selectedSortGroup}」组内频道排序已保存`);
+}));
+
+$('reset-in-group-order-btn')?.addEventListener('click', () => {
+  if (currentGroupChannelOrders && currentGroupChannelOrders[selectedSortGroup]) {
+    delete currentGroupChannelOrders[selectedSortGroup];
+  }
+  renderInGroupChannelList();
+  toast(`已恢复「${selectedSortGroup}」默认组内顺序，请点击「保存组内排序」确认保存`);
+});
 
 /* ==========================================================================
    Batch Probe Progress & Polling
    ========================================================================== */
 
-let probePollTimer = null;
-
 async function checkProbeStatus() {
   try {
-    const status = await api('probe/status');
+    const st = await api('probe/status');
     const card = $('probe-progress-card');
     if (!card) return;
 
-    if (status.state === 'running') {
+    if (st.state === 'running') {
       card.hidden = false;
-      $('probe-progress-title').textContent = `正在一键探测分辨率… (已获取 ${status.found} 个规格)`;
-      $('probe-progress-count').textContent = `${status.done} / ${status.total}`;
-      const pct = status.total > 0 ? Math.round((status.done / status.total) * 100) : 0;
-      $('probe-progress-fill').style.width = pct + '%';
+      $('probe-progress-title').textContent = `正在一键探测分辨率… (已获取 ${st.found} 个规格)`;
+      $('probe-progress-count').textContent = `${st.done} / ${st.total}`;
+      const bar = $('probe-progress-bar');
+      if (bar) {
+        bar.max = st.total || 1;
+        bar.value = st.done || 0;
+      }
       if (!probePollTimer) {
         probePollTimer = setInterval(checkProbeStatus, 1000);
       }
@@ -2663,20 +2857,19 @@ async function checkProbeStatus() {
         clearInterval(probePollTimer);
         probePollTimer = null;
       }
-      if (status.state === 'completed' || status.state === 'stopped') {
-        card.hidden = true;
-        if (status.state === 'completed') {
-          toast(`一键探测完成：共完成 ${status.done} 个频道探测，获取到 ${status.found} 个视频分辨率规格`);
+      card.hidden = true;
+      if (lastProbeState === 'running') {
+        if (st.state === 'completed') {
+          toast(`一键探测完成：共完成 ${st.done} 个频道探测，获取到 ${st.found} 个视频分辨率规格`);
           await loadChannels();
-        } else if (status.state === 'stopped') {
-          toast(`一键探测已停止：完成 ${status.done}/${status.total} 个频道`);
+        } else if (st.state === 'stopped') {
+          toast(`一键探测已停止：完成 ${st.done}/${st.total} 个频道`);
           await loadChannels();
         }
-      } else {
-        card.hidden = true;
       }
     }
-  } catch (e) {
+    lastProbeState = st.state;
+  } catch (_) {
     if (probePollTimer) {
       clearInterval(probePollTimer);
       probePollTimer = null;
@@ -2684,42 +2877,41 @@ async function checkProbeStatus() {
   }
 }
 
-if ($('batch-probe-btn')) {
-  $('batch-probe-btn').onclick = async () => {
-    const missingCount = channels.filter(c => c.enabled && (c.url || c.unicast_url) && !c.resolution).length;
-    const totalEnabled = channels.filter(c => c.enabled && (c.url || c.unicast_url)).length;
-    if (totalEnabled === 0) {
-      toast('没有已启用且可播放的频道', true);
-      return;
-    }
+$('batch-probe-btn')?.addEventListener('click', async () => {
+  const missingCount = channels.filter(c => c.enabled && (c.url || c.unicast_url) && !c.resolution).length;
+  const totalEnabled = channels.filter(c => c.enabled && (c.url || c.unicast_url)).length;
+  if (totalEnabled === 0) {
+    toast('没有已启用且可播放的频道', true);
+    return;
+  }
 
-    let onlyMissing = false;
-    if (missingCount > 0 && missingCount < totalEnabled) {
-      if (confirm(`发现 ${missingCount} 个频道尚未探测分辨率（共 ${totalEnabled} 个启用频道）。\n\n点击【确定】仅探测这 ${missingCount} 个未获取分辨率的频道；\n点击【取消】重新探测全部 ${totalEnabled} 个频道。`)) {
-        onlyMissing = true;
-      }
-    } else if (!confirm(`将对 ${totalEnabled} 个启用频道进行一键流分辨率探测，是否开始？`)) {
-      return;
+  let onlyMissing = false;
+  if (missingCount > 0 && missingCount < totalEnabled) {
+    if (confirm(`发现 ${missingCount} 个频道尚未探测分辨率（共 ${totalEnabled} 个启用频道）。\n\n点击【确定】仅探测这 ${missingCount} 个未获取分辨率的频道；\n点击【取消】重新探测全部 ${totalEnabled} 个频道。`)) {
+      onlyMissing = true;
     }
+  } else if (!confirm(`将对 ${totalEnabled} 个启用频道进行一键流分辨率探测，是否开始？`)) {
+    return;
+  }
 
-    try {
-      await api(`probe/start?only_missing=${onlyMissing}`, 'POST');
-      toast('一键探测任务已在后台启动');
-      await checkProbeStatus();
-    } catch (e) {
-      toast('启动探测失败: ' + e.message, true);
-    }
-  };
-}
+  try {
+    await api(`probe/start?only_missing=${onlyMissing}`, 'POST');
+    toast('一键探测任务已在后台启动');
+    await checkProbeStatus();
+  } catch (e) {
+    toast('启动探测失败: ' + e.message, true);
+  }
+});
 
-if ($('stop-probe-btn')) {
-  $('stop-probe-btn').onclick = async () => {
-    try {
-      await api('probe/stop', 'POST');
-      toast('正在停止探测…');
-      await checkProbeStatus();
-    } catch (e) {
-      toast('停止探测失败: ' + e.message, true);
-    }
-  };
-}
+$('stop-probe-btn')?.addEventListener('click', async () => {
+  try {
+    await api('probe/stop', 'POST');
+    toast('正在停止探测…');
+    await checkProbeStatus();
+  } catch (e) {
+    toast('停止探测失败: ' + e.message, true);
+  }
+});
+
+// Initialize workspace
+init().catch(() => {});

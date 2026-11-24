@@ -359,7 +359,7 @@ func (s *Service) ServeEPG(w http.ResponseWriter, r *http.Request) {
 			logoURL := c.Logo
 			if strings.HasPrefix(logoURL, "/") {
 				scheme := "http"
-				if r.TLS != nil {
+				if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
 					scheme = "https"
 				}
 				logoURL = scheme + "://" + r.Host + logoURL

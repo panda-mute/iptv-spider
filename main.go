@@ -39,6 +39,7 @@ func main() {
 	}
 	panel.Current = service
 	defer service.StopScan()
+	defer service.StopProbe()
 	defer service.StopEPG()
 	defer global.CRON.Stop()
 

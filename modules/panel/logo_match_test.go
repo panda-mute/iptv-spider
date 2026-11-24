@@ -74,7 +74,7 @@ func TestLogoMatchEndpointDoesNotOverwriteChannel(t *testing.T) {
 		if token == "" && w.Code != 401 {
 			t.Fatal(w.Code)
 		}
-		if token != "" && (w.Code != 200 || !strings.Contains(w.Body.String(), "raw.githubusercontent.com")) {
+		if token != "" && (w.Code != 200 || !strings.Contains(w.Body.String(), PrimaryLogoSource)) {
 			t.Fatal(w.Code, w.Body.String())
 		}
 	}

@@ -1,6 +1,8 @@
 package panel
 
 import (
+	"bytes"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 )
@@ -107,5 +109,16 @@ func TestDefaultKeywordMappingsAndCustomization(t *testing.T) {
 	mReset, found := store.FindMapping("体育频道")
 	if !found || mReset.TargetName != "五星体育" {
 		t.Fatalf("expected ResetMappings to restore 体育频道 -> 五星体育, got %+v", mReset)
+	}
+
+	// 8. Verify HTTP POST /api/panel/mappings enforces strict JSON decoding
+	h := s.Handler("tok")
+	badReq := httptest.NewRequest("POST", "/api/panel/mappings", bytes.NewBufferString(`{"keyword":"a","target_id":"1","target_name":"b","unknown":1}`))
+	badReq.Header.Set("Authorization", "Bearer tok")
+	badReq.Header.Set("Content-Type", "application/json")
+	badRec := httptest.NewRecorder()
+	h.ServeHTTP(badRec, badReq)
+	if badRec.Code != 400 {
+		t.Fatalf("expected HTTP 400 for unknown field in mapping payload, got %d", badRec.Code)
 	}
 }

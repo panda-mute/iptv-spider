@@ -332,6 +332,7 @@ func TestMatchChannelCandidatesAndKeywordMappings(t *testing.T) {
 		Group:      "本地频道",
 	})
 	reqPost := httptest.NewRequest("POST", "/api/panel/mappings", bytes.NewReader(postBody))
+	reqPost.Header.Set("Content-Type", "application/json")
 	reqPost.Header.Set("Authorization", "Bearer test-token")
 	wPost := httptest.NewRecorder()
 	handler.ServeHTTP(wPost, reqPost)

@@ -47,3 +47,29 @@ func TestProbeJobLifecycleAndValidation(t *testing.T) {
 		t.Fatalf("expected non-running state after stop, got %v", stoppedStatus["state"])
 	}
 }
+
+func TestSetResolutionPersistsOnImportedChannel(t *testing.T) {
+	s := testService(t)
+	imp := Channel{
+		ID:         "51",
+		Name:       "CCTV-1",
+		OperatorID: "ch-cctv1",
+		Group:      "央视",
+		URL:        "igmp://239.10.0.1:5140",
+		Enabled:    true,
+		Source:     "iptv",
+	}
+	if err := s.Store.Import([]Channel{imp}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Store.SetResolution(imp, "1920x1080", true); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Channel("ch-cctv1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Resolution != "1920x1080" {
+		t.Fatalf("expected imported channel resolution 1920x1080, got %q", got.Resolution)
+	}
+}

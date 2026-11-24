@@ -386,19 +386,64 @@ func (s *Store) Import(channels []Channel) error {
 }
 
 func (s *Store) UpdateResolution(key string, resolution string) error {
+	return s.SetResolution(Channel{Key: key, ID: key, URL: key}, resolution, false)
+}
+
+// SetResolution persists a probed video resolution onto matching stored overrides and imported channels.
+func (s *Store) SetResolution(target Channel, resolution string, overwrite bool) error {
 	resolution = strings.TrimSpace(resolution)
 	if resolution == "" {
 		return nil
 	}
+	targetKey := target.EnsureKey()
+	matches := func(c Channel) bool {
+		if targetKey != "" && (c.Key == targetKey || c.ID == targetKey || c.OperatorID == targetKey || c.URL == targetKey || ("scan-"+multicastHost(c.URL)) == targetKey) {
+			return true
+		}
+		if target.OperatorID != "" && c.OperatorID == target.OperatorID {
+			return true
+		}
+		if target.URL != "" && c.URL == target.URL {
+			return true
+		}
+		return false
+	}
 	return s.update(func(d *state) error {
-		for k, c := range d.Channels {
-			if c.Key == key || c.ID == key || c.URL == key || ("scan-"+multicastHost(c.URL)) == key {
-				if c.Resolution == "" {
+		updated := false
+		if targetKey != "" {
+			if c, ok := d.Channels[targetKey]; ok {
+				if overwrite || c.Resolution == "" {
 					c.Resolution = resolution
-					d.Channels[k] = c
+					d.Channels[targetKey] = c
 				}
-				return nil
+				updated = true
 			}
+		}
+		if !updated {
+			for k, c := range d.Channels {
+				if matches(c) {
+					if overwrite || c.Resolution == "" {
+						c.Resolution = resolution
+						d.Channels[k] = c
+					}
+					updated = true
+					break
+				}
+			}
+		}
+		// Also update matching imported channels (including channels without overrides yet).
+		importedCopy := append([]Channel(nil), d.Imported...)
+		importedChanged := false
+		for i := range importedCopy {
+			if matches(importedCopy[i]) {
+				if overwrite || importedCopy[i].Resolution == "" {
+					importedCopy[i].Resolution = resolution
+					importedChanged = true
+				}
+			}
+		}
+		if importedChanged {
+			d.Imported = importedCopy
 		}
 		return nil
 	})
@@ -480,6 +525,16 @@ func (s *Store) Mappings() []ChannelMapping {
 		return res[i].Keyword < res[j].Keyword
 	})
 	return res
+}
+
+func (s *Store) MappingsSnapshot() map[string]ChannelMapping {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make(map[string]ChannelMapping, len(s.data.Mappings))
+	for k, v := range s.data.Mappings {
+		out[k] = v
+	}
+	return out
 }
 
 func (s *Store) FindMapping(keyword string) (ChannelMapping, bool) {

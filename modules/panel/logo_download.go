@@ -37,8 +37,8 @@ func sanitizeFilename(s string) string {
 		}
 	}
 	res := strings.Trim(b.String(), "_")
-	if len(res) > 50 {
-		res = res[:50]
+	if runes := []rune(res); len(runes) > 50 {
+		res = string(runes[:50])
 	}
 	return res
 }
@@ -152,6 +152,10 @@ func (s *Service) ServeLocalLogo(w http.ResponseWriter, r *http.Request) {
 		dir = "data/logos"
 	}
 	fullPath := filepath.Join(dir, file)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if strings.EqualFold(filepath.Ext(file), ".svg") {
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+	}
 	info, err := os.Stat(fullPath)
 	if err != nil || info.IsDir() {
 		if data, readErr := presetLogosFS.ReadFile("preset_logos/" + file); readErr == nil {

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestSanitizeFilename(t *testing.T) {
@@ -26,6 +27,11 @@ func TestSanitizeFilename(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("sanitizeFilename(%q) = %q, want %q", tc.input, got, tc.want)
 		}
+	}
+	longChinese := strings.Repeat("上海电信频道", 12) // 72 runes, 216 bytes
+	gotLong := sanitizeFilename(longChinese)
+	if !utf8.ValidString(gotLong) || len([]rune(gotLong)) != 50 {
+		t.Errorf("sanitizeFilename long UTF-8 invalid: valid=%v runes=%d got=%q", utf8.ValidString(gotLong), len([]rune(gotLong)), gotLong)
 	}
 }
 
@@ -227,6 +233,24 @@ func TestUploadLogoHTTPRoute(t *testing.T) {
 	if !bytes.Equal(getRec.Body.Bytes(), pngBytes) {
 		t.Errorf("served logo body does not match uploaded bytes")
 	}
+
+	// Verify ServeLocalLogo sets nosniff and sandboxes SVG responses
+	svgURL, err := s.SaveUploadedLogo("test-svg", "logo.svg", strings.NewReader(`<svg xmlns="http://www.w3.org/2000/svg"></svg>`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	svgReq := httptest.NewRequest("GET", svgURL, nil)
+	svgRec := httptest.NewRecorder()
+	s.ServeLocalLogo(svgRec, svgReq)
+	if svgRec.Code != 200 {
+		t.Fatalf("expected HTTP 200 for SVG logo, got %d", svgRec.Code)
+	}
+	if svgRec.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Errorf("missing nosniff header on ServeLocalLogo")
+	}
+	if !strings.Contains(svgRec.Header().Get("Content-Security-Policy"), "sandbox") {
+		t.Errorf("expected sandbox CSP on SVG logo, got %q", svgRec.Header().Get("Content-Security-Policy"))
+	}
 }
 
 func TestWebAssetsServed(t *testing.T) {
@@ -248,8 +272,14 @@ func TestWebAssetsServed(t *testing.T) {
 		if path == "/" && !strings.Contains(rec.Body.String(), "upload-logo-btn") {
 			t.Errorf("index.html (via /) does not contain upload-logo-btn")
 		}
+		if path == "/" && strings.Contains(rec.Body.String(), "style=\"") {
+			t.Errorf("index.html contains inline style attributes blocked by CSP style-src 'self'")
+		}
 		if path == "/app.js" && !strings.Contains(rec.Body.String(), "uploadLogoFile") {
 			t.Errorf("app.js does not contain uploadLogoFile")
+		}
+		if path == "/app.js" && (strings.Contains(rec.Body.String(), "style.cssText") || strings.Contains(rec.Body.String(), "style=\"")) {
+			t.Errorf("app.js contains inline styles blocked by CSP style-src 'self'")
 		}
 		asset := strings.TrimPrefix(path, "/")
 		if asset == "" {
