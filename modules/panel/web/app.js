@@ -263,7 +263,7 @@ function fillSettings(result) {
   populateFCCSelect(settings.forward?.fcc_list, settings.forward?.fcc);
   populateCatchupTemplateSelect(settings.forward?.catchup_template);
   if (settings.logos) {
-    currentLogoSources = settings.logos.sources || (settings.logos.primary ? [settings.logos.primary] : ["https://github.com/sggc/SDU-IPTV-PRO/tree/main/logo"]);
+    currentLogoSources = settings.logos.sources || (settings.logos.primary ? [settings.logos.primary] : ["https://tvlogo.netioe.com"]);
   }
   currentGroupOrder = settings.group_order || ["4K", "央视", "卫视", "高清", "本地", "少儿", "标清", "其它", "待识别"];
   currentGroupChannelOrders = settings.group_channel_order || {};
@@ -1927,7 +1927,7 @@ epgLiveTimer = setInterval(() => {
   }
 }, 45000);
 
-let currentLogoSources = ['https://github.com/sggc/SDU-IPTV-PRO/tree/main/logo'];
+let currentLogoSources = ['https://tvlogo.netioe.com'];
 let logoSourcesStatusData = {};
 
 function renderLogoSourcesList() {
@@ -1936,7 +1936,7 @@ function renderLogoSourcesList() {
   container.innerHTML = '';
 
   if (!currentLogoSources || currentLogoSources.length === 0) {
-    currentLogoSources = ['https://github.com/sggc/SDU-IPTV-PRO/tree/main/logo'];
+    currentLogoSources = ['https://tvlogo.netioe.com'];
   }
 
   currentLogoSources.forEach((url, idx) => {
@@ -2058,7 +2058,7 @@ if ($('refresh-logos')) {
 
 if ($('reset-logos')) {
   $('reset-logos').onclick = () => {
-    currentLogoSources = ['https://github.com/sggc/SDU-IPTV-PRO/tree/main/logo'];
+    currentLogoSources = ['https://tvlogo.netioe.com'];
     renderLogoSourcesList();
     toast('已恢复默认台标源，请点击「保存台标源」确认保存');
   };

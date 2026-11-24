@@ -509,7 +509,7 @@ func TestEditChannelIDPersistsWithoutDuplicates(t *testing.T) {
 
 func TestAutomaticLogoMatchingAndManualPriority(t *testing.T) {
 	for _, name := range []string{"CCTV-1", "CCTV1HD", "CCTV-5+HD", "东方卫视HD", "体育频道", "风云足球HD"} {
-		if got := channelLogo(name); !strings.HasPrefix(got, "https://raw.githubusercontent.com/sggc/SDU-IPTV-PRO/main/logo/") {
+		if got := channelLogo(name); !strings.HasPrefix(got, PrimaryLogoSource+"/logo/") {
 			t.Errorf("no match for %s", name)
 		}
 	}

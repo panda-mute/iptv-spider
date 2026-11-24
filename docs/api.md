@@ -262,7 +262,7 @@ http://192.168.1.100:8888/api/play?id=1&mode=unicast
 ### 3.6 台标管理与本地缓存
 
 - `GET /api/panel/logos/status`: 查询配置的所有台标源同步状态与台标总数。
-- `POST /api/panel/logos/refresh`: 从 GitHub / HTTP 源拉取最新台标索引。
+- `POST /api/panel/logos/refresh`: 从 GitHub / HTTP 源拉取最新台标索引。默认源为 `https://tvlogo.netioe.com/`，读取 `/index.json`；HTTP 源也兼容旧版 `/api/list` 格式。刷新失败时保留已有索引。
 - `POST /api/panel/logos/match`: 匹配指定频道的台标候选（优先亮色、特定地域）。
 - `POST /api/panel/logos/download`: 将选定的台标图片下载并固化到本地服务。
 - `GET /logos/{file...}`: 读取本地缓存的台标图片。

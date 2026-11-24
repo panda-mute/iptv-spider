@@ -146,6 +146,8 @@ func OpenStore(path string, defaults Settings) (*Store, error) {
 	s := &Store{path: path, data: state{Version: 2, Settings: defaults, Channels: map[string]Channel{}}}
 	b, err := os.ReadFile(path)
 	if err == nil {
+		// Do not let the new default Sources mask legacy Primary/Secondary fields.
+		s.data.Settings.Logos = LogoSources{}
 		if err = json.Unmarshal(b, &s.data); err != nil {
 			return nil, fmt.Errorf("读取面板数据: %w", err)
 		}
@@ -182,6 +184,12 @@ func OpenStore(path string, defaults Settings) (*Store, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
+	// Migrate only the previous default; preserve custom source lists and order.
+	sources := s.data.Settings.Logos.GetSources()
+	migrateLogos := len(sources) == 1 && sourceKey(sources[0]) == legacyPrimaryLogoSource && s.data.Settings.Logos.Secondary == ""
+	if migrateLogos {
+		s.data.Settings.Logos = defaultLogoSources()
+	}
 	if s.data.Mappings == nil {
 		s.data.Mappings = map[string]ChannelMapping{}
 		for _, m := range DefaultMappings() {
@@ -199,7 +207,7 @@ func OpenStore(path string, defaults Settings) (*Store, error) {
 		s.ApplyMapping(&s.data.Imported[i])
 		PreclassifyChannel(&s.data.Imported[i])
 	}
-	if s.data.Version == 1 {
+	if s.data.Version == 1 || migrateLogos {
 		if err := s.update(func(d *state) error { d.Version = 2; return nil }); err != nil {
 			return nil, fmt.Errorf("升级面板配置: %w", err)
 		}

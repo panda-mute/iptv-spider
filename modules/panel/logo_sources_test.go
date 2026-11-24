@@ -10,15 +10,15 @@ import (
 
 func TestLogoSourceRegionAndPriority(t *testing.T) {
 	cfg := defaultLogoSources()
-	if v := configuredLogo(cfg, "CCTV-1HD", ""); !strings.Contains(v, "raw.githubusercontent.com") {
+	if v := configuredLogo(cfg, "CCTV-1HD", ""); !strings.HasPrefix(v, PrimaryLogoSource+"/logo/") {
 		t.Fatal(v)
 	}
-	if v := configuredLogo(cfg, "新闻综合", ""); !strings.Contains(v, "raw.githubusercontent.com") || !strings.Contains(v, ".png") {
+	if v := configuredLogo(cfg, "新闻综合", ""); !strings.HasPrefix(v, PrimaryLogoSource+"/logo/") || !strings.Contains(v, ".png") {
 		t.Fatal(v)
 	}
 	// No longer prioritizes foreign source for CCTV-1
-	if v := configuredLogo(cfg, "CCTV-1", "foreign"); !strings.Contains(v, "raw.githubusercontent.com") {
-		t.Fatal("expected github logo without domestic/foreign distinction", v)
+	if v := configuredLogo(cfg, "CCTV-1", "foreign"); !strings.HasPrefix(v, PrimaryLogoSource+"/logo/") {
+		t.Fatal("expected default source logo without domestic/foreign distinction", v)
 	}
 	names := githubLogos([]string{"logo/CCTV1.png", "logo/sub/CCTV1.png", "logo/sub/中文.png", "other/a.png", "logo/readme.txt"}, "owner/repo", "main", "logo")
 	if len(names) != 2 || !strings.HasSuffix(names["CCTV1"], "/logo/CCTV1.png") || strings.Contains(names["中文"], "中文") {
@@ -33,6 +33,10 @@ func TestLogoSourceRegionAndPriority(t *testing.T) {
 }
 func TestConfiguredLogoSourceRefreshAndPersist(t *testing.T) {
 	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/index.json" {
+			http.NotFound(w, r)
+			return
+		}
 		if r.URL.Path != "/api/list" {
 			t.Error(r.URL.Path)
 		}

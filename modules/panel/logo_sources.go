@@ -17,7 +17,9 @@ import (
 	"sync"
 )
 
-const PrimaryLogoSource = "https://github.com/sggc/SDU-IPTV-PRO/tree/main/logo"
+const PrimaryLogoSource = "https://tvlogo.netioe.com"
+
+const legacyPrimaryLogoSource = "https://github.com/sggc/SDU-IPTV-PRO/tree/main/logo"
 
 //go:embed logos_primary.json
 var primaryLogoPaths []byte
@@ -56,7 +58,7 @@ func (v LogoSources) GetSources() []string {
 func (v LogoSources) validate() error {
 	for _, src := range v.GetSources() {
 		if src != "" && (!httpURL(src) || strings.ContainsAny(src, "?\r\n")) {
-			return errors.New("台标源应为 GitHub 目录 URL 或提供 /api/list 的 HTTP(S) 台标库地址")
+			return errors.New("台标源应为 GitHub 目录 URL 或提供 /index.json、/api/list 的 HTTP(S) 台标库地址")
 		}
 	}
 	return nil
@@ -142,8 +144,8 @@ var sourceCatalogs = struct {
 	data map[string]map[string]string
 	dark map[string]map[string]string
 }{
-	data: map[string]map[string]string{PrimaryLogoSource: primaryCatalog()},
-	dark: map[string]map[string]string{PrimaryLogoSource: primaryDarkCatalog()},
+	data: map[string]map[string]string{PrimaryLogoSource: defaultIndexCatalog(false), legacyPrimaryLogoSource: primaryCatalog()},
+	dark: map[string]map[string]string{PrimaryLogoSource: defaultIndexCatalog(true), legacyPrimaryLogoSource: primaryDarkCatalog()},
 }
 
 func primaryCatalog() map[string]string {
@@ -319,12 +321,18 @@ func refreshSource(ctx context.Context, src string) error {
 		names, darkNames = parseGithubLogos(paths, repo, ref, dir)
 	} else {
 		var data json.RawMessage
-		if err := getLogoJSON(ctx, src+"/api/list", &data); err != nil {
-			return err
+		indexErr := getLogoJSON(ctx, src+"/index.json", &data)
+		if indexErr == nil {
+			names, darkNames, indexErr = parseIndexCatalog(data, src)
 		}
-		names = parseLogoCatalog(data)
-		for k, v := range names {
-			names[k] = src + strings.TrimPrefix(v, LogoSource)
+		if indexErr != nil || len(names)+len(darkNames) == 0 {
+			if err := getLogoJSON(ctx, src+"/api/list", &data); err != nil {
+				return fmt.Errorf("读取 index.json 失败 (%v)，读取 api/list 失败: %w", indexErr, err)
+			}
+			names, darkNames = parseLogoCatalog(data), nil
+			for k, v := range names {
+				names[k] = src + strings.TrimPrefix(v, LogoSource)
+			}
 		}
 	}
 	if len(names) == 0 && len(darkNames) == 0 {

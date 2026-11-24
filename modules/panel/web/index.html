@@ -468,7 +468,7 @@
         <div class="section-head">
           <div>
             <h2>台标源</h2>
-            <p>支持配置多个台标源（GitHub 目录或兼容 /api/list 的台标库）。按列表从上到下优先匹配，优先选用常规台标，深色台标自动作为后备。</p>
+            <p>默认使用 tvlogo.netioe.com。支持多个台标源（GitHub 目录或提供 /index.json、/api/list 的台标库）。按列表从上到下优先匹配，优先选用常规台标，深色台标自动作为后备。</p>
           </div>
           <div class="actions">
             <button id="save-logos">保存台标源</button>
@@ -478,7 +478,7 @@
         </div>
         <div id="logo-sources-list" class="logo-sources-container"></div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; margin-bottom: 8px;">
-          <input id="new-logo-source-input" placeholder="输入 GitHub 仓库目录 URL 或 /api/list 台标库地址" style="flex: 1; min-width: 260px; height: 36px;">
+          <input id="new-logo-source-input" placeholder="输入 GitHub 目录 URL 或 HTTP 台标库根地址" style="flex: 1; min-width: 260px; height: 36px;">
           <button id="add-logo-source-btn" type="button" class="secondary" style="height: 36px; line-height: 1;">添加台标源</button>
         </div>
         <p id="logos-status" role="status" style="margin-top: 8px; font-size: 13px; color: var(--text-muted);"></p>
