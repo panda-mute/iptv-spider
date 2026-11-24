@@ -251,8 +251,16 @@ func TestWebAssetsServed(t *testing.T) {
 		if path == "/app.js" && !strings.Contains(rec.Body.String(), "uploadLogoFile") {
 			t.Errorf("app.js does not contain uploadLogoFile")
 		}
-		if path == "/style.css" && !strings.Contains(rec.Body.String(), "width: 135px") {
-			t.Errorf("style.css does not contain max-width: 140px for channel-name-text")
+		asset := strings.TrimPrefix(path, "/")
+		if asset == "" {
+			asset = "index.html"
+		}
+		want, err := web.ReadFile("web/" + asset)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(rec.Body.Bytes(), want) {
+			t.Errorf("response for %s does not match the embedded asset", path)
 		}
 	}
 }
